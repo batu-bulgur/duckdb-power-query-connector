@@ -21,6 +21,14 @@ SELECT i::INTEGER AS id,
        (i * 1.25)::DOUBLE AS amount,
        DATE '2026-01-01' + (i % 30)::INTEGER AS event_date
 FROM range(1000000) t(i);
+CREATE TABLE stddev_cases("grup" VARCHAR, "ölçüm""değeri" DOUBLE, integer_value INTEGER, decimal_value DECIMAL(12,2));
+INSERT INTO stddev_cases VALUES
+    ('sample', 1, 1, 1.25), ('sample', 2, 2, 2.50), ('sample', 3, 3, 3.75), ('sample', NULL, NULL, NULL),
+    ('negative', -1, -1, -1.25), ('negative', 0, 0, 0), ('negative', 1, 1, 1.25),
+    ('singleton', 7, 7, 7), ('singleton', NULL, NULL, NULL),
+    ('all_null', NULL, NULL, NULL), ('all_null', NULL, NULL, NULL),
+    ('constant', 4, 4, 4), ('constant', 4, 4, 4), ('constant', 4, 4, 4),
+    ('offset', 1000000000001, 1, 1), ('offset', 1000000000002, 2, 2), ('offset', 1000000000003, 3, 3);
 CREATE TABLE string_cases(id INTEGER, label VARCHAR);
 INSERT INTO string_cases VALUES (1, 'O''Brien'), (2, 'İstanbul'), (3, 'x%_y'), (4, 'back\slash'), (5, ''), (6, NULL);
 INSERT INTO string_cases VALUES

@@ -168,6 +168,43 @@ shared DuckDB.Contents = (
                 TolerateConcatOverflow = true,
                 // Enables connection pooling via the system ODBC manager
                 ClientConnectionPooling = false,
+                // Standard ODBC aggregate capability bits do not include standard
+                // deviation. Register only this extra M aggregate and let the
+                // existing visitor resolve and quote its column expression.
+                AstVisitor = [
+                    Functions = { List.StandardDeviation },
+                    Invocation = (visitor, rowType, groupKeys, ast) =>
+                        let
+                            args = ast[Arguments],
+                            column =
+                                if groupKeys <> null and List.Count(args) = 1
+                                    and args{0}[Kind] = "FieldAccess"
+                                    and args{0}[Expression] = RowExpression.Row then
+                                    visitor(args{0})
+                                else
+                                    error "Only direct numeric column aggregates support standard deviation folding.",
+                            call = (name) => [
+                                Kind = "Invocation",
+                                Function = [Kind = "Function", Name = name],
+                                Arguments = { [Expression = column, Type = null] }
+                            ]
+                        in
+                            if not Type.Is(Type.NonNullable(column[Type]), type number) then
+                                error "Only numeric columns support standard deviation folding."
+                            else [
+                                // M ignores nulls and returns 0 for one non-null
+                                // value; DuckDB STDDEV_SAMP returns NULL for it.
+                                // Keep empty/all-null inputs NULL in both engines.
+                                Kind = "Case",
+                                Case = call("COUNT"),
+                                Conditions = { [
+                                    When = [Kind = "Literal", Value = "1"],
+                                    Then = [Kind = "Literal", Value = "0"]
+                                ] },
+                                Else = call("STDDEV_SAMP"),
+                                Type = Double.Type
+                            ]
+                ],
                 // DuckDB VARCHAR is UTF-8; comparison to its NVARCHAR alias is
                 // lossless. Add this conversion without replacing driver casts.
                 ImplicitTypeConversions = #table(

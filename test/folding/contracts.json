@@ -1,5 +1,14 @@
 [
   {
+    "name": "stddev",
+    "maxRows": 1,
+    "sqlPatterns": [
+      "(?i)stddev(_samp)?\\(",
+      "where",
+      "\"id\" >= \\?"
+    ]
+  },
+  {
     "name": "filter_select",
     "maxRows": 5,
     "sqlPatterns": [
@@ -168,6 +177,54 @@
     "sqlPatterns": [
       "select \"id\"",
       "where \"label\" = 'İstanbul'"
+    ]
+  },
+  {
+    "name": "stddev_direct",
+    "maxRows": 1,
+    "sqlPatterns": [
+      "(?i)stddev_samp\\(",
+      "case",
+      "count\\(",
+      "where",
+      "\"id\" >= \\?"
+    ]
+  },
+  {
+    "name": "stddev_group",
+    "maxRows": 6,
+    "sqlPatterns": [
+      "(?i)stddev_samp\\(",
+      "case",
+      "count\\(",
+      "group by \"grup\""
+    ]
+  },
+  {
+    "name": "stddev_empty",
+    "maxRows": 1,
+    "sqlPatterns": [
+      "(?i)stddev_samp\\(",
+      "case",
+      "count\\("
+    ]
+  },
+  {
+    "name": "stddev_singleton",
+    "maxRows": 1,
+    "sqlPatterns": [
+      "(?i)stddev_samp\\(",
+      "case",
+      "count\\("
+    ]
+  },
+  {
+    "name": "stddev_million",
+    "maxRows": 1,
+    "sqlPatterns": [
+      "(?i)stddev_samp\\(",
+      "case",
+      "count\\("
     ]
   }
 ]

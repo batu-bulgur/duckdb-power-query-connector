@@ -1,0 +1,1 @@
+#table(type table [grup = text, sd = nullable number, integer_sd = nullable number, decimal_sd = nullable number], {{"all_null",null,null,null},{"constant",0,0,0},{"negative",1,1,1.25},{"offset",1,1,1},{"sample",1,1,1.25},{"singleton",0,0,0}})

@@ -16,9 +16,9 @@ Config_DriverName = "DuckDB Driver";
 // Set to null to determine the value from the driver.
 Config_SqlConformance = null;
 
-// DuckDB only supports OFFSET when LIMIT is also specified,
-// so we will use LimitClauseKind.Limit.
-Config_LimitClauseKind = LimitClauseKind.Limit;
+// DuckDB supports LIMIT, LIMIT ... OFFSET, and OFFSET without LIMIT.
+// Advertising LIMIT only makes Table.Skip fall back to local evaluation.
+Config_LimitClauseKind = LimitClauseKind.LimitOffset;
 
 // DuckDB does not support standard username/password
 // handling through the UID and PWD connection string parameters.
@@ -91,6 +91,11 @@ shared DuckDB.Contents = (
         SqlCapabilities = Diagnostics.LogValue(
             "SqlCapabilities_Options", defaultConfig[SqlCapabilities] & [
                 SupportsTop = false,
+                // Older DuckDB ODBC releases misread SQL_C_WCHAR string parameters
+                // bound to SQL_VARCHAR (duckdb/duckdb-odbc#478). DuckDB supports
+                // SQL string literals; let the engine quote them while retaining
+                // parameter bindings for other types.
+                SupportsStringLiterals = true,
                 SupportsDerivedTable = true,
                 Sql92Conformance = 8 /* SQL_SC_SQL92_FULL */,
                 GroupByCapabilities = 4 /* SQL_GB_NO_RELATION */,
@@ -130,7 +135,20 @@ shared DuckDB.Contents = (
         //
         // The sample implementation provided here will simply output the original table
         // to the user trace log, without any modification.
-        SQLGetTypeInfo = (types) =>
+        SQLGetTypeInfo = (driverTypes) =>
+            let
+                // DuckDB reports SQL_VARCHAR and SQL_WVARCHAR with the same
+                // TYPE_NAME. Give the Unicode row its valid DuckDB alias so the
+                // folding engine can distinguish Unicode constants from columns.
+                types = Table.FromRecords(
+                    Table.TransformRows(driverTypes, each
+                        if [DATA_TYPE] = ODBC[SQL_TYPE][WVARCHAR] and [TYPE_NAME] = "VARCHAR" then
+                            _ & [TYPE_NAME = "NVARCHAR"]
+                        else
+                            _),
+                    Value.Type(driverTypes)
+                )
+            in
             if (EnableTraceOutput <> true) then
                 types
             else
@@ -150,6 +168,12 @@ shared DuckDB.Contents = (
                 TolerateConcatOverflow = true,
                 // Enables connection pooling via the system ODBC manager
                 ClientConnectionPooling = false,
+                // DuckDB VARCHAR is UTF-8; comparison to its NVARCHAR alias is
+                // lossless. Add this conversion without replacing driver casts.
+                ImplicitTypeConversions = #table(
+                    {"Type1", "Type2", "ResultType"},
+                    {{"VARCHAR", "NVARCHAR", "NVARCHAR"}}
+                ),
                 // Other configuration options
                 SqlCapabilities = SqlCapabilities,
                 SQLGetInfo = SQLGetInfo,

@@ -1,0 +1,1 @@
+#table(type table [id = number, amount = number], {{5,6.25},{6,7.5},{7,8.75}})

@@ -1,0 +1,1 @@
+#table(type table [Name = text, Kind = text, NativeTypeName = text], {{"id","number","INTEGER"},{"label","text","VARCHAR"}})

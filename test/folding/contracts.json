@@ -1,0 +1,173 @@
+[
+  {
+    "name": "filter_select",
+    "maxRows": 5,
+    "sqlPatterns": [
+      "select \"id\",\\s*\"amount\"",
+      "where \"id\" >= \\?",
+      "order by \"id\"",
+      "limit 5"
+    ]
+  },
+  {
+    "name": "group_sum",
+    "maxRows": 2,
+    "sqlPatterns": [
+      "sum\\(\"amount\"\\)",
+      "group by \"category\""
+    ]
+  },
+  {
+    "name": "group_count",
+    "maxRows": 2,
+    "sqlPatterns": [
+      "count\\(",
+      "group by \"category\""
+    ]
+  },
+  {
+    "name": "row_count",
+    "maxRows": 1,
+    "sqlPatterns": [
+      "count\\(1\\)"
+    ]
+  },
+  {
+    "name": "distinct",
+    "maxRows": 2,
+    "sqlPatterns": [
+      "select distinct \"category\""
+    ]
+  },
+  {
+    "name": "skip_take",
+    "maxRows": 3,
+    "sqlPatterns": [
+      "select \"id\",\\s*\"amount\"",
+      "order by \"id\"",
+      "limit 3 offset 5"
+    ]
+  },
+  {
+    "name": "skip_only",
+    "maxRows": 3,
+    "sqlPatterns": [
+      "order by \"id\"",
+      "offset 999997"
+    ]
+  },
+  {
+    "name": "skip_zero",
+    "maxRows": 3,
+    "sqlPatterns": [
+      "order by \"id\"",
+      "limit 3"
+    ]
+  },
+  {
+    "name": "skip_past_end",
+    "maxRows": 0,
+    "sqlPatterns": [
+      "order by \"id\"",
+      "offset 1000005"
+    ]
+  },
+  {
+    "name": "text_equals",
+    "maxRows": 3,
+    "sqlPatterns": [
+      "where",
+      "\"category\" = 'odd'",
+      "\"id\" >= \\?",
+      "limit 3"
+    ]
+  },
+  {
+    "name": "date_filter",
+    "maxRows": 2,
+    "sqlPatterns": [
+      "where",
+      "\"event_date\" >= \\?",
+      "\"id\" >= \\?"
+    ]
+  },
+  {
+    "name": "text_contains",
+    "sqlPatterns": [
+      "\"label\" like '%99999%'",
+      "limit 3"
+    ],
+    "maxRows": 3
+  },
+  {
+    "name": "text_starts",
+    "sqlPatterns": [
+      "\"label\" like 'item-99999%'",
+      "limit 3"
+    ],
+    "maxRows": 3
+  },
+  {
+    "name": "text_quote",
+    "sqlPatterns": [
+      "\"label\" = 'O''Brien'"
+    ],
+    "maxRows": 1
+  },
+  {
+    "name": "text_wildcards",
+    "sqlPatterns": [
+      "\"label\" like",
+      "escape"
+    ],
+    "maxRows": 1
+  },
+  {
+    "name": "text_unicode",
+    "maxRows": 1,
+    "sqlPatterns": [
+      "select \"id\"",
+      "where \"label\" = 'İstanbul'"
+    ]
+  },
+  {
+    "name": "text_unicode_letters",
+    "maxRows": 1,
+    "sqlPatterns": [
+      "select \"id\"",
+      "where \"label\" = 'ÇığÖŞÜçöşüİı'"
+    ]
+  },
+  {
+    "name": "text_unicode_quote",
+    "maxRows": 1,
+    "sqlPatterns": [
+      "select \"id\"",
+      "where \"label\" = 'İzmir''in'"
+    ]
+  },
+  {
+    "name": "text_unicode_nonbmp",
+    "maxRows": 1,
+    "sqlPatterns": [
+      "select \"id\"",
+      "where \"label\" = 'prefix-😀-ş'"
+    ]
+  },
+  {
+    "name": "text_unicode_no_match",
+    "maxRows": 0,
+    "sqlPatterns": [
+      "select \"id\"",
+      "where \"label\" = 'İSTANBUL'"
+    ]
+  },
+  {
+    "name": "text_unicode_million",
+    "maxRows": 1,
+    "sqlPatterns": [
+      "select \"id\"",
+      "where \"label\" = 'İstanbul'"
+    ]
+  }
+]

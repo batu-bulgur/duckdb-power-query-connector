@@ -1,6 +1,6 @@
 # DuckDB Power Query Connector by MotherDuck
 
-This is the Power Query Custom Connector for DuckDB. Use this to connect to a DuckDB database in memory, from a local file or on MotherDuck with Power BI and Excel.
+This is the Power Query Custom Connector for DuckDB. Use this to connect to a DuckDB database in memory, from a local file or on MotherDuck with Power BI. Host integration differs in Excel; a self-distributed MEZ must not be assumed to load there (see [the development guide](docs/development.md#contribution-boundaries-and-host-integration)).
 
 1. [Installing](#installing)
 2. [How to use with Power BI](#how-to-use-with-power-bi)
@@ -90,15 +90,38 @@ Now, you should be able to load your UTF-8 encoded database with Power BI direct
 
 ## Building and releasing
 
+For a local Windows workflow without Visual Studio or administrator installation,
+use the pinned SDK tools from 64-bit PowerShell 7.2 or newer:
+
+```powershell
+./tools/dev.ps1 bootstrap
+./tools/dev.ps1 doctor
+./tools/dev.ps1 build
+./tools/dev.ps1 test
+./tools/dev.ps1 test-folding
+./tools/dev.ps1 verify
+```
+
+An existing 64-bit `DuckDB Driver` is required. `build` uses SDK `MakePQX` and
+validates the resulting MEZ. `test-folding` checks correct results, generated SQL,
+and ODBC transfer budgets in addition to the SDK's strict folding flag. `verify`
+also checks that deliberate local-evaluation controls are rejected. Tools and
+synthetic data stay under ignored `.agent/`; tracked test queries are never edited
+during runs. See [the development guide](docs/development.md),
+[upstream review and reproductions](docs/upstream-review.md), and the separate
+[ADBC research track](docs/experiments/adbc.md). Host GUI integration, including
+Excel's different connector availability, remains a separate final validation.
+
 CI builds the `.mez` on every PR and push to `main` (see `.github/workflows/build.yaml`).
 The build just runs `msbuild DuckDB.proj` on a `windows-2025` runner — the project's
 `BuildMez` target zips the connector sources into `duckdb-power-query-connector.mez`,
 uploaded as the `duckdb-power-query-connector` workflow artifact. To build locally on
 Windows: `msbuild DuckDB.proj` and grab `bin\AnyCPU\Debug\DuckDB.mez`.
 
-A `smoke-test` job then installs the DuckDB ODBC driver and the Power Query SDK
-`PQTest` harness on the runner and runs `test/smoke.query.pq` against the built `.mez`,
-so a PR fails if the connector can't actually open a connection and run a query.
+A `smoke-test` job then installs the pinned DuckDB ODBC driver and Power Query SDK
+on the isolated runner and runs the original three functional tests, the folding
+suite, and the guard's negative controls against the built `.mez`. A PR fails for
+incorrect results, unexpected local evaluation, or excessive ODBC transfer.
 
 ### Releasing
 

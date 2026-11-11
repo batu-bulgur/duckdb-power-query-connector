@@ -16,9 +16,9 @@ Config_DriverName = "DuckDB Driver";
 // Set to null to determine the value from the driver.
 Config_SqlConformance = null;
 
-// DuckDB only supports OFFSET when LIMIT is also specified,
-// so we will use LimitClauseKind.Limit.
-Config_LimitClauseKind = LimitClauseKind.Limit;
+// DuckDB supports LIMIT, LIMIT ... OFFSET, and OFFSET without LIMIT.
+// Advertising LIMIT only makes Table.Skip fall back to local evaluation.
+Config_LimitClauseKind = LimitClauseKind.LimitOffset;
 
 // DuckDB does not support standard username/password
 // handling through the UID and PWD connection string parameters.
@@ -91,6 +91,11 @@ shared DuckDB.Contents = (
         SqlCapabilities = Diagnostics.LogValue(
             "SqlCapabilities_Options", defaultConfig[SqlCapabilities] & [
                 SupportsTop = false,
+                // Older DuckDB ODBC releases misread SQL_C_WCHAR string parameters
+                // bound to SQL_VARCHAR (duckdb/duckdb-odbc#478). DuckDB supports
+                // SQL string literals; let the engine quote them while retaining
+                // parameter bindings for other types.
+                SupportsStringLiterals = true,
                 SupportsDerivedTable = true,
                 Sql92Conformance = 8 /* SQL_SC_SQL92_FULL */,
                 GroupByCapabilities = 4 /* SQL_GB_NO_RELATION */,

@@ -4,11 +4,20 @@ on:
   push:
     branches: [main]
   pull_request:
+    branches: [main]
   workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: connector-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   build:
     runs-on: windows-2025
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6
 
@@ -19,6 +28,7 @@ jobs:
         shell: pwsh
         run: |
           msbuild DuckDB.proj
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           Copy-Item bin\AnyCPU\Debug\DuckDB.mez duckdb-power-query-connector.mez
 
       - uses: actions/upload-artifact@v7
@@ -32,6 +42,7 @@ jobs:
   smoke-test:
     needs: build
     runs-on: windows-2025
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v6
 
@@ -47,9 +58,12 @@ jobs:
           # are all it would write anyway. $ProgressPreference speeds up Invoke-WebRequest.
           $ProgressPreference = 'SilentlyContinue'
           New-Item -ItemType Directory .agent\ci-odbc -Force | Out-Null
-          $zip = ".agent\ci-odbc\duckdb_odbc-windows-amd64.zip"
-          Invoke-WebRequest "https://github.com/duckdb/duckdb-odbc/releases/download/v1.4.4.0/$zip" -OutFile $zip
+          $toolchain = Get-Content ./tools/toolchain.json -Raw | ConvertFrom-Json
+          $asset = "duckdb_odbc-windows-amd64.zip"
+          $zip = Join-Path .agent\ci-odbc $asset
+          Invoke-WebRequest "https://github.com/duckdb/duckdb-odbc/releases/download/v$($toolchain.ciOdbcVersion)/$asset" -OutFile $zip
           tar -xf $zip -C .agent\ci-odbc
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $dir = (Resolve-Path .agent\ci-odbc).Path
 
           $inst = "HKLM:\SOFTWARE\ODBC\ODBCINST.INI"

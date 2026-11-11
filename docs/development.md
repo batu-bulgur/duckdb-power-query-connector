@@ -15,7 +15,7 @@ not permission to alter endpoint policies or install a machine-wide driver.
 ./tools/dev.ps1 bootstrap     # Pinned Microsoft SDK package, SHA-256 verified
 ./tools/dev.ps1 doctor        # SDK version, real ODBC engine, pagination SQL
 ./tools/dev.ps1 build         # MakePQX compile, PQTest info, archive/source hashes
-./tools/dev.ps1 test          # Three original upstream functional baselines
+./tools/dev.ps1 test          # Upstream functional, schema and comparer baselines
 ./tools/dev.ps1 test-folding  # Results + strict folding + SQL/ODBC row contracts
 ./tools/dev.ps1 verify        # Build, runner checks, both suites, negative controls
 ```
@@ -68,7 +68,8 @@ passes only when all of the following hold:
 3. Exactly one matching ODBC query-start/query-finish pair is observed without
    an ODBC exception.
 4. The SQL includes the required projection, predicate, aggregation, order, or
-   pagination clauses in `test/folding/contracts.json`.
+   pagination clauses in `test/folding/contracts.json`, and matches none of the
+   optional `forbiddenPatterns` (for example ODBC `{ fn ... }` escapes).
 5. The driver-reported row count is within the case's transfer budget.
 
 The extra checks are necessary. On SDK 2.155.2, `compare` can exit zero while its
@@ -87,7 +88,8 @@ contains one million rows; the Unicode equality case must transfer just one row.
 This is a folding regression fixture, not a throughput or peak-memory benchmark.
 
 Standard deviation uses the existing ODBC `AstVisitor.Functions`/`Invocation`
-hooks, registering only `List.StandardDeviation`. A direct numeric column in a
+hooks. The shared visitor registers `List.StandardDeviation` and `Text.EndsWith`,
+and dispatches each invocation to its own mapping. A direct numeric column in a
 global or grouped aggregate is translated to
 `CASE COUNT(column) WHEN 1 THEN 0 ELSE STDDEV_SAMP(column) END`. M ignores nulls,
 returns zero for a singleton, and returns null for empty/all-null inputs; the
@@ -109,16 +111,20 @@ same calculations over `Table.Buffer`, which forces the reference into M.
 These are aggregate folding checks; Power BI's full column-profiling UI still
 requires a separate host integration check.
 
+EndsWith additionally covers literal `%`/`_`, apostrophes, backslashes, Unicode
+and case/dotted-I distinctions, an emoji suffix, no matches, and an empty suffix
+against a table containing NULL and empty labels. Its million-row case must
+transfer at most three rows. Separate cases compose it with grouped COUNT and
+LIMIT/OFFSET. New baselines were hand-selected and checked through independent
+ODBC `suffix(...)` queries, rather than generated from the connector's output.
+
 `verify` also tests the runner against exit-zero/failed-JSON, missing diagnostics,
-incorrect query identifiers, missing SQL, and excessive row counts. Three real
+incorrect query identifiers, missing SQL, forbidden escapes, and excessive row counts. Two real
 negative controls return correct data but must be rejected by the folding guard:
-`Table.AddIndexColumn` followed by `FirstN`, `Text.EndsWith`, and filtering an upstream
+`Table.AddIndexColumn` followed by `FirstN`, and filtering an upstream
 `Value.NativeQuery(..., [EnableFolding=true])` result. The latter remains an
 upstream limitation: its `Odbc.Query` handler ignores subsequent folding.
-Strict EndsWith currently produces a generic SDK
-NullReferenceException. Its negative control first evaluates the correct result
-without the strict flag, then prove the missing predicates and excess transfer
-are rejected. Expected rejection of these controls verifies the guard; it does not claim those
+Expected rejection of these controls verifies the guard; it does not claim those
 operations have gained folding support.
 
 Known limitations are explicitly outside the supported folding suite. To make a
@@ -126,7 +132,6 @@ known unsupported query fail the normal test command (exit 1), run:
 
 ```powershell
 ./tools/dev.ps1 test-folding -IncludeKnownLimitations -Case native_filter
-./tools/dev.ps1 test-folding -IncludeKnownLimitations -Case text_ends
 ```
 
 `-IncludeKnownLimitations` without `-Case` includes these queries and is expected
@@ -135,8 +140,8 @@ into passing folding expectations.
 
 ## Contribution boundaries and host integration
 
-Runtime changes comprise `LimitOffset`, `SupportsStringLiterals`, and a narrow
-Unicode type-info correction, plus the numeric sample-SD mapping above.
+Runtime changes comprise `LimitOffset`, `SupportsStringLiterals`, the shared
+EndsWith/sample-SD visitor, and a narrow Unicode type-info correction.
 The driver reports both SQL_VARCHAR and SQL_WVARCHAR
 as `VARCHAR`; the Unicode row is renamed to DuckDB's `NVARCHAR` alias and an
 additive implicit conversion lets it compare to UTF-8 `VARCHAR` columns. This
@@ -146,13 +151,21 @@ independent of local paths and business data.
 The ODBC architecture and string-function escape suppression from upstream PR #72
 remain in place. Review the reproduction evidence in `upstream-review.md`.
 
-`Text.EndsWith` remains outside supported folding coverage. Enabling the ODBC
-RIGHT function makes Power Query emit `{ fn right(...) }`, which the driver
-rejects and can silently retry locally even with `--failOnFoldingFailure`.
-The official ODBC 2.0.0.1 asset was also tested, unregistered, through its ODBC ABI;
-the same escaped call fails, while native `RIGHT(...)` succeeds. Upgrading the
-driver alone is therefore not established as a fix. Driver source/build changes
-are outside this connector task's scope. See [text folding evidence](text-folding.md).
+`Text.EndsWith` with the default comparer uses a narrowly registered ODBC
+`AstVisitor` invocation handler to emit native `right(column, length(suffix)) =
+suffix`. It delegates argument translation and quoting to the existing engine;
+no navigation wrapper or SQL text rewriter is added. `SQL_STRING_FUNCTIONS=0`
+stays intact. Explicit comparer overloads are left to M, with a functional
+regression protecting `Comparer.OrdinalIgnoreCase` semantics.
+
+`AstVisitor` is documented, but its `Functions`/`Invocation` members and SQL AST
+record shape are not described by the public ODBC parameter reference. This
+implementation is measured on SDK 2.155.2, not an assurance about every Mashup
+version. Strict result/SQL/row tests must gate SDK changes. The official ODBC
+2.0.0.1 escape diagnostic remains historical evidence; the complete new mapping
+has been tested locally with the installed engine v1.5.4. Hosted CI's ODBC
+1.4.4.0 and Desktop/Excel hosts require their own runs. Driver source/build
+changes remain out of scope. See [text folding evidence](text-folding.md).
 
 The SDK/fixture/runner tooling is a generally reusable, separate contribution.
 ADBC research and any future Excel-specific experiment must stay separate from

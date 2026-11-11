@@ -88,13 +88,13 @@ no matches, and unchanged public table metadata.
 
 The unchanged pre-fix commit `78235eb` fails the promoted `text_unicode` test
 with exit code 1. The fixed connector passes the same expected result and ODBC
-folding contract. Detailed evidence and the EndsWith boundary are in
+folding contract. Detailed evidence and the native EndsWith mapping are in
 [`text-folding.md`](text-folding.md).
 
 ## Known limits
 
 The prototype does not claim every M operation folds. The negative controls
-demonstrate local indexing, EndsWith, and downstream native-query folding are still rejected
+demonstrate local indexing and downstream native-query folding are still rejected
 by the test guard. No ADBC migration, production-data benchmark, hosted CI run, or
 Excel/Power BI GUI validation follows from these SDK results. Keep these claims
 separate when preparing upstream pull requests.

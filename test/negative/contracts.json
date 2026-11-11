@@ -1,5 +1,4 @@
 [
   {"name":"local_index", "maxRows":3, "sqlPatterns":["limit 3"]},
-  {"name":"native_filter", "maxRows":3, "sqlPatterns":["where", "limit 3"]},
-  {"name":"text_ends", "maxRows":3, "sqlPatterns":["where", "limit 3"]}
+  {"name":"native_filter", "maxRows":3, "sqlPatterns":["where", "limit 3"]}
 ]

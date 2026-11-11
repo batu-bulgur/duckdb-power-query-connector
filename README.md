@@ -128,7 +128,16 @@ on the isolated runner and runs the functional/schema tests, the folding
 suite, and the guard's negative controls against the built `.mez`. A PR fails for
 incorrect results, unexpected local evaluation, or excessive ODBC transfer.
 
-### Releasing
+### Personal fork releases
+
+The personal fork tracks [VERSION](VERSION) together with the connector metadata.
+Every SemVer increment automatically publishes `fork-v<version>` from the exact
+successful main build, with curated feature/folding notes, the `.mez`, checksums
+and a build manifest. Download and compare versions on the
+[personal fork releases page](https://github.com/batu-bulgur/duckdb-power-query-connector/releases).
+See [CHANGELOG](CHANGELOG.md) and the [versioning policy](docs/versioning.md).
+
+### Upstream-compatible manual releases
 
 Don't create releases or tags from the GitHub UI. Run the **Release** workflow instead
 (Actions → Release → Run workflow, or `gh workflow run release.yaml -f sha=<commit> -f version=0.2.0`):

@@ -60,13 +60,14 @@ workflow artifacts; credentials, MAW data and production records are excluded.
 ## Upstream contributions and releases
 
 The standing permission ends at the personal fork. Sending code, comments or
-issues to MotherDuck and creating releases/tags require a separate explicit
-request. Prepare upstream contributions from current upstream/main with only
+issues to MotherDuck requires a separate explicit request. Prepare upstream
+contributions from current upstream/main with only
 the relevant fix, tests and portable documentation. Discuss broad architecture
 before proposing a large parity implementation; disclose undocumented SDK
 dependencies and independently measured compatibility limits.
 
-Release remains a separate manually invoked workflow using a successful main
-push build's artifact. CI success is SDK/ODBC evidence, not a claim that Excel or
-Power BI Desktop GUI integration passed. Host validation stays separate and
-must preserve user sessions and existing trust/security policy.
+Every SemVer increment automatically publishes a personal-fork release from
+that successful main push build's artifact, with curated notes and checksums;
+see [versioning](versioning.md). CI success is SDK/ODBC evidence, not a claim that
+Excel or Power BI Desktop GUI integration passed. Host validation stays separate
+and must preserve user sessions and existing trust/security policy.

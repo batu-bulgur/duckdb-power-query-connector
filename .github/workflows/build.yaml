@@ -11,7 +11,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: connector-${{ github.event.pull_request.number || github.ref }}
+  # Supersede old PR checks, but preserve every versioned main commit's build.
+  group: connector-${{ github.event.pull_request.number || github.sha }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
@@ -20,6 +21,17 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Validate version policy
+        shell: pwsh
+        env:
+          VERSION_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          ./tools/Test-Versioning.ps1
+          $baseRef = if ($env:VERSION_BASE) { $env:VERSION_BASE } else { 'HEAD^' }
+          ./tools/Test-Version.ps1 -BaseRef $baseRef
 
       - uses: microsoft/setup-msbuild@v2
 
@@ -84,6 +96,7 @@ jobs:
         run: |
           # Seed through the same ODBC engine instead of downloading a separate CLI.
           # Test source files stay untouched; substituted queries live under .agent.
+          ./tools/Test-Version.ps1 -Connector ./duckdb-power-query-connector.mez
           ./tools/dev.ps1 verify -Connector ./duckdb-power-query-connector.mez
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 

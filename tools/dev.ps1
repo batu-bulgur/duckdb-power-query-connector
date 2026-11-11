@@ -165,6 +165,7 @@ try {
         Write-Host '64-bit ODBC, all three pagination SQL forms, fixture counts, and SDK verified.'
     } else {
         Assert-Sdk
+        & (Join-Path $PSScriptRoot 'Test-Version.ps1')
         if (-not $Connector) { Build-Connector; $Connector = $defaultMez }
         else { $Connector = (Resolve-Path -LiteralPath $Connector).Path }
         switch ($Command) {
@@ -172,6 +173,7 @@ try {
             'test' { Invoke-RegressionSuite }
             'test-folding' { Invoke-RegressionSuite -Folding }
             'verify' {
+                & (Join-Path $PSScriptRoot 'Test-Versioning.ps1')
                 & (Join-Path $PSScriptRoot 'Test-Runner.ps1')
                 Invoke-RegressionSuite
                 Invoke-RegressionSuite -Folding

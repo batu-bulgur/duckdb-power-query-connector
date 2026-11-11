@@ -168,42 +168,72 @@ shared DuckDB.Contents = (
                 TolerateConcatOverflow = true,
                 // Enables connection pooling via the system ODBC manager
                 ClientConnectionPooling = false,
-                // Standard ODBC aggregate capability bits do not include standard
-                // deviation. Register only this extra M aggregate and let the
-                // existing visitor resolve and quote its column expression.
+                // A single visitor preserves both the native scalar suffix
+                // mapping and the numeric sample-standard-deviation aggregate.
                 AstVisitor = [
-                    Functions = { List.StandardDeviation },
+                    Functions = {Text.EndsWith, List.StandardDeviation},
                     Invocation = (visitor, rowType, groupKeys, ast) =>
-                        let
-                            args = ast[Arguments],
-                            column =
-                                if groupKeys <> null and List.Count(args) = 1
-                                    and args{0}[Kind] = "FieldAccess"
-                                    and args{0}[Expression] = RowExpression.Row then
-                                    visitor(args{0})
-                                else
-                                    error "Only direct numeric column aggregates support standard deviation folding.",
-                            call = (name) => [
-                                Kind = "Invocation",
-                                Function = [Kind = "Function", Name = name],
-                                Arguments = { [Expression = column, Type = null] }
-                            ]
-                        in
-                            if not Type.Is(Type.NonNullable(column[Type]), type number) then
-                                error "Only numeric columns support standard deviation folding."
-                            else [
-                                // M ignores nulls and returns 0 for one non-null
-                                // value; DuckDB STDDEV_SAMP returns NULL for it.
-                                // Keep empty/all-null inputs NULL in both engines.
-                                Kind = "Case",
-                                Case = call("COUNT"),
-                                Conditions = { [
-                                    When = [Kind = "Literal", Value = "1"],
-                                    Then = [Kind = "Literal", Value = "0"]
-                                ] },
-                                Else = call("STDDEV_SAMP"),
-                                Type = Double.Type
-                            ]
+                        if ast[Function][Value] = List.StandardDeviation then
+                            let
+                                args = ast[Arguments],
+                                column =
+                                    if groupKeys <> null and List.Count(args) = 1
+                                        and args{0}[Kind] = "FieldAccess"
+                                        and args{0}[Expression] = RowExpression.Row then
+                                        visitor(args{0})
+                                    else
+                                        error "Only direct numeric column aggregates support standard deviation folding.",
+                                call = (name) => [
+                                    Kind = "Invocation",
+                                    Function = [Kind = "Function", Name = name],
+                                    Arguments = { [Expression = column, Type = null] }
+                                ]
+                            in
+                                if not Type.Is(Type.NonNullable(column[Type]), type number) then
+                                    error "Only numeric columns support standard deviation folding."
+                                else [
+                                    // M ignores nulls and returns 0 for one non-null
+                                    // value; DuckDB STDDEV_SAMP returns NULL for it.
+                                    // Keep empty/all-null inputs NULL in both engines.
+                                    Kind = "Case",
+                                    Case = call("COUNT"),
+                                    Conditions = { [
+                                        When = [Kind = "Literal", Value = "1"],
+                                        Then = [Kind = "Literal", Value = "0"]
+                                    ] },
+                                    Else = call("STDDEV_SAMP"),
+                                    Type = Double.Type
+                                ]
+                        else if ast[Function][Value] = Text.EndsWith then
+                            if List.Count(ast[Arguments]) <> 2 then
+                                error Error.Record("Expression.Error", "EndsWith folding requires the default comparer.")
+                            else
+                                let
+                                    column = visitor(ast[Arguments]{0}),
+                                    suffix = visitor(ast[Arguments]{1}),
+                                    // Let the engine quote literals/identifiers. Use
+                                    // DuckDB LENGTH, including for Unicode suffixes.
+                                    length = [
+                                        Kind = "Invocation",
+                                        Function = [Kind = "Function", Name = "length"],
+                                        Arguments = {[Expression = suffix, Type = type nullable text]}
+                                    ]
+                                in
+                                    [
+                                        Kind = "BinaryLogicalOperation",
+                                        Operator = "Equals",
+                                        Left = [
+                                            Kind = "Invocation",
+                                            Function = [Kind = "Function", Name = "right"],
+                                            Arguments = {
+                                                [Expression = column, Type = type nullable text],
+                                                [Expression = length, Type = Int64.Type]
+                                            }
+                                        ],
+                                        Right = suffix
+                                    ]
+                        else
+                            error Error.Record("Expression.Error", "No registered DuckDB function mapping.")
                 ],
                 // DuckDB VARCHAR is UTF-8; comparison to its NVARCHAR alias is
                 // lossless. Add this conversion without replacing driver casts.

@@ -33,7 +33,9 @@ CREATE TABLE string_cases(id INTEGER, label VARCHAR);
 INSERT INTO string_cases VALUES (1, 'O''Brien'), (2, 'İstanbul'), (3, 'x%_y'), (4, 'back\slash'), (5, ''), (6, NULL);
 INSERT INTO string_cases VALUES
     (7, 'istanbul'), (8, 'Istanbul'), (9, 'ıstanbul'),
-    (10, 'ÇığÖŞÜçöşüİı'), (11, 'İzmir''in'), (12, 'prefix-😀-ş');
+    (10, 'ÇığÖŞÜçöşüİı'), (11, 'İzmir''in'), (12, 'prefix-😀-ş'),
+    (13, 'tail-😀'), (14, 'tail-BUL'), (15, 'tail-İ'), (16, 'tail-ı'),
+    (17, 'tail-I'), (18, 'tail-i'), (19, 'not-xAB_y'), (20, 'not-x%Ay');
 CREATE TABLE unicode_folding AS
 SELECT i::INTEGER AS id,
        CASE WHEN i = 999997 THEN 'İstanbul' ELSE 'other' END AS label

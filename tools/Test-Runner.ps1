@@ -31,6 +31,10 @@ $evidence.DiagnosticEvents.Odbc[0].Properties.Command='select id from folding li
 $evidence.DiagnosticEvents.Odbc[1].Properties.RowCount=1000000
 Must-Reject 'million-row transfer despite correct output' { Assert-FoldingEvidence $evidence $contract }
 $evidence.DiagnosticEvents.Odbc[1].Properties.RowCount=3
+$escapeContract = [pscustomobject]@{name='suffix';sqlPatterns=@('where');forbiddenPatterns=@('\{\s*fn\b');maxRows=3}
+$evidence.DiagnosticEvents.Odbc[0].Properties.Command='select id from folding where { fn right(label, 5) } = ''99999'' limit 3'
+Must-Reject 'ODBC escape despite a WHERE and small row count' { Assert-FoldingEvidence $evidence $escapeContract }
+$evidence.DiagnosticEvents.Odbc[0].Properties.Command='select id from folding limit 3 offset 5'
 $evidence.DiagnosticEvents.Odbc[1].Properties.Identifier='different-query'
 Must-Reject 'mismatched diagnostic identifiers' { Assert-FoldingEvidence $evidence $contract }
 $evidence.DiagnosticEvents.Odbc=@()

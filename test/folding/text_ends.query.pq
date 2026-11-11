@@ -1,4 +1,4 @@
-// Known limitation: EndsWith still falls back locally on the verified toolchain.
+// Million-row regression: native suffix predicate and only three ODBC rows.
 let
     src = DuckDB.Contents("__DB_PATH__", null, true, false, "single", [custom_user_agent="folding-regression"]),
     data = src{[Item="folding"]}[Data],

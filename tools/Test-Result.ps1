@@ -26,6 +26,11 @@ function Assert-FoldingEvidence {
     foreach ($pattern in $Contract.sqlPatterns) {
         if ($sql -notmatch $pattern) { throw "Folding contract missing SQL pattern '$pattern'. Actual SQL: $sql" }
     }
+    if ($Contract.PSObject.Properties.Name -contains 'forbiddenPatterns') {
+        foreach ($pattern in $Contract.forbiddenPatterns) {
+            if ($sql -match $pattern) { throw "Folding contract forbids SQL pattern '$pattern'. Actual SQL: $sql" }
+        }
+    }
     $rows = $finishes[0].Properties.RowCount
     if ($null -eq $rows -or $rows -lt 0 -or $rows -gt $Contract.maxRows) {
         throw "ODBC returned $rows rows; allowed maximum is $($Contract.maxRows)."

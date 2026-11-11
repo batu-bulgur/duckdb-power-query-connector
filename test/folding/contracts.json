@@ -226,5 +226,163 @@
       "case",
       "count\\("
     ]
+  },
+  {
+    "name": "text_ends",
+    "maxRows": 3,
+    "sqlPatterns": [
+      "select \"id\"",
+      "where right\\(\"label\", length\\('99999'\\)\\) = '99999'",
+      "order by \"id\"",
+      "limit 3"
+    ],
+    "forbiddenPatterns": [
+      "\\{\\s*fn\\b"
+    ]
+  },
+  {
+    "name": "text_ends_wildcards",
+    "maxRows": 1,
+    "sqlPatterns": [
+      "select \"id\"",
+      "where right\\(\"label\", length\\('%_y'\\)\\) = '%_y'",
+      "order by \"id\""
+    ],
+    "forbiddenPatterns": [
+      "\\{\\s*fn\\b"
+    ]
+  },
+  {
+    "name": "text_ends_quote",
+    "maxRows": 1,
+    "sqlPatterns": [
+      "select \"id\"",
+      "where right\\(\"label\", length\\('''Brien'\\)\\) = '''Brien'",
+      "order by \"id\""
+    ],
+    "forbiddenPatterns": [
+      "\\{\\s*fn\\b"
+    ]
+  },
+  {
+    "name": "text_ends_unicode",
+    "maxRows": 4,
+    "sqlPatterns": [
+      "select \"id\"",
+      "where right\\(\"label\", length\\('bul'\\)\\) = 'bul'",
+      "order by \"id\""
+    ],
+    "forbiddenPatterns": [
+      "\\{\\s*fn\\b"
+    ]
+  },
+  {
+    "name": "text_ends_uppercase",
+    "maxRows": 1,
+    "sqlPatterns": [
+      "select \"id\"",
+      "where right\\(\"label\", length\\('BUL'\\)\\) = 'BUL'",
+      "order by \"id\""
+    ],
+    "forbiddenPatterns": [
+      "\\{\\s*fn\\b"
+    ]
+  },
+  {
+    "name": "text_ends_dotted",
+    "maxRows": 1,
+    "sqlPatterns": [
+      "select \"id\"",
+      "where right\\(\"label\", length\\('İ'\\)\\) = 'İ'",
+      "order by \"id\""
+    ],
+    "forbiddenPatterns": [
+      "\\{\\s*fn\\b"
+    ]
+  },
+  {
+    "name": "text_ends_dotless",
+    "maxRows": 2,
+    "sqlPatterns": [
+      "select \"id\"",
+      "where right\\(\"label\", length\\('ı'\\)\\) = 'ı'",
+      "order by \"id\""
+    ],
+    "forbiddenPatterns": [
+      "\\{\\s*fn\\b"
+    ]
+  },
+  {
+    "name": "text_ends_emoji",
+    "maxRows": 1,
+    "sqlPatterns": [
+      "select \"id\"",
+      "where right\\(\"label\", length\\('😀'\\)\\) = '😀'",
+      "order by \"id\""
+    ],
+    "forbiddenPatterns": [
+      "\\{\\s*fn\\b"
+    ]
+  },
+  {
+    "name": "text_ends_no_match",
+    "maxRows": 0,
+    "sqlPatterns": [
+      "select \"id\"",
+      "where right\\(\"label\", length\\('ABSENT-ş'\\)\\) = 'ABSENT-ş'",
+      "order by \"id\""
+    ],
+    "forbiddenPatterns": [
+      "\\{\\s*fn\\b"
+    ]
+  },
+  {
+    "name": "text_ends_empty",
+    "maxRows": 19,
+    "sqlPatterns": [
+      "select \"id\"",
+      "where right\\(\"label\", length\\(''\\)\\) = ''",
+      "order by \"id\""
+    ],
+    "forbiddenPatterns": [
+      "\\{\\s*fn\\b"
+    ]
+  },
+  {
+    "name": "text_ends_backslash",
+    "maxRows": 1,
+    "sqlPatterns": [
+      "select \"id\"",
+      "where right\\(\"label\", length\\('\\\\slash'\\)\\) = '\\\\slash'",
+      "order by \"id\""
+    ],
+    "forbiddenPatterns": [
+      "\\{\\s*fn\\b"
+    ]
+  },
+  {
+    "name": "text_ends_offset",
+    "maxRows": 3,
+    "sqlPatterns": [
+      "select \"id\"",
+      "where right\\(\"label\", length\\('99999'\\)\\) = '99999'",
+      "order by \"id\"",
+      "limit 3 offset 2"
+    ],
+    "forbiddenPatterns": [
+      "\\{\\s*fn\\b"
+    ]
+  },
+  {
+    "name": "text_ends_group",
+    "maxRows": 1,
+    "sqlPatterns": [
+      "count\\(",
+      "where right\\(\"label\", length\\('99999'\\)\\) = '99999'",
+      "group by \"category\""
+    ],
+    "forbiddenPatterns": [
+      "\\{\\s*fn\\b"
+    ]
   }
 ]

@@ -112,8 +112,10 @@ during runs. See [the development guide](docs/development.md),
 [ADBC research track](docs/experiments/adbc.md). Host GUI integration, including
 Excel's different connector availability, remains a separate final validation.
 Unicode equality and its Turkish/emoji/quoting regressions are described in
-[text folding evidence](docs/text-folding.md); EndsWith remains an explicitly
-rejected ODBC escape limitation, including in the official ODBC 2.0.0.1 diagnostic.
+[text folding evidence](docs/text-folding.md). Default-comparer `Text.EndsWith`
+now folds to native `right(column, length(suffix)) = suffix`, with result,
+escape-exclusion and ODBC-row regression contracts. This was verified on SDK
+2.155.2 and ODBC engine v1.5.4; other driver/host versions need separate validation.
 
 CI builds the `.mez` on every PR and push to `main` (see `.github/workflows/build.yaml`).
 The build just runs `msbuild DuckDB.proj` on a `windows-2025` runner — the project's

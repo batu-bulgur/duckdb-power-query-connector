@@ -20,6 +20,9 @@ Use 64-bit PowerShell 7.2 or newer on Windows:
 - Reproduce failures with the actual SDK and ODBC driver before changing capabilities.
 - Keep fixes narrow and add correct-result, SQL, and ODBC-row regression assertions.
   PQTest exit code zero alone is not success. Never regenerate baselines in test runs.
+- For text folding changes, read `docs/text-folding.md`. Preserve the additive
+  VARCHAR/NVARCHAR conversion and the negative EndsWith escape regression until
+  actual driver folding is demonstrated. Driver source/build work is a separate scope.
 - Use only synthetic fixtures. Never use MAW or production data in automated tests.
 - Put downloads, substituted queries, fixture databases, credentials, logs, and
   ad-hoc research under `/.agent/`. Never stage that directory or `/outputs/`.

@@ -37,9 +37,8 @@ Relevant prior work and reports were inspected before changing capabilities:
 ## Actual local environment
 
 Windows x64; PowerShell 7.6.9; Power Query SDK 2.155.2, Mashup engine 2.155.504.0;
-installed ODBC engine reports DuckDB v1.5.4. The separately installed CLI reports
-v2.0.0. Creating a fixture with that CLI first reproduced an unreadable storage
-version error in ODBC. Fixtures now use the same ODBC engine throughout.
+installed ODBC engine reports DuckDB v1.5.4. Fixtures use the same ODBC engine
+throughout. ODBC 2.0.0.1 was additionally inspected in isolation; see below.
 
 ## Regression 1: Skip causes full transfer
 
@@ -71,13 +70,31 @@ quote string literals (`"category" = 'odd'`). The same test then returns the
 expected three rows. Numeric/date binding remains enabled. This change also lets
 Contains/StartsWith generate supported LIKE predicates without enabling
 the ODBC `{fn ...}` escapes suppressed by upstream PR #72. Regression tests verify
-apostrophe quoting and escaping of literal `%` and `_` characters. Unicode equality
-is separately retained as a known unsupported case, not reported as folded.
+apostrophe quoting and escaping of literal `%` and `_` characters.
+
+## Regression 3: Unicode equality cannot fold
+
+ODBC returns two type-info rows called `VARCHAR`, with SQL data types 12
+(SQL_VARCHAR) and -9 (SQL_WVARCHAR). The Unicode comparison initially falls back
+locally; the strict SDK call returns a generic NullReferenceException. Giving
+the Unicode row the distinct, valid DuckDB alias `NVARCHAR` and declaring the
+implicit conversion `VARCHAR + NVARCHAR -> NVARCHAR` resolves the ambiguity.
+The Unicode comparison now emits `WHERE "label" = 'İstanbul'` without a column
+cast and transfers one row from a million-row table. This follows Microsoft's
+[ODBC implicit-conversion sample](https://github.com/microsoft/DataConnectors/blob/master/samples/ODBC/RedshiftODBC/RedshiftODBC.pq)
+and preserves the driver's other conversion capabilities. Regression cases cover
+case/dotted-I distinctions, Turkish letters, Unicode apostrophe literals, emoji,
+no matches, and unchanged public table metadata.
+
+The unchanged pre-fix commit `78235eb` fails the promoted `text_unicode` test
+with exit code 1. The fixed connector passes the same expected result and ODBC
+folding contract. Detailed evidence and the EndsWith boundary are in
+[`text-folding.md`](text-folding.md).
 
 ## Known limits
 
 The prototype does not claim every M operation folds. The negative controls
-demonstrate local indexing, EndsWith, Unicode equality, and downstream native-query folding are still rejected
+demonstrate local indexing, EndsWith, and downstream native-query folding are still rejected
 by the test guard. No ADBC migration, production-data benchmark, hosted CI run, or
 Excel/Power BI GUI validation follows from these SDK results. Keep these claims
 separate when preparing upstream pull requests.

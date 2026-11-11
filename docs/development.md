@@ -80,18 +80,20 @@ catch bound-parameter and escaping errors that SQL shape alone would miss.
 Coverage includes numeric/date/text predicates, selected columns, SUM, grouped
 COUNT, total row count, DISTINCT, LIMIT, LIMIT/OFFSET, standalone OFFSET, zero
 skip, skip beyond the table, Contains/StartsWith, apostrophes,
-and literal `%`/`_` in text matching. The fixture contains one million rows.
+and literal `%`/`_` in text matching. Unicode equality is covered with Turkish
+letters, dotted/dotless I and case variants, apostrophes, supplementary-plane
+characters, and an empty result. Each of the main and Unicode folding tables
+contains one million rows; the Unicode equality case must transfer just one row.
 This is a folding regression fixture, not a throughput or peak-memory benchmark.
 
 `verify` also tests the runner against exit-zero/failed-JSON, missing diagnostics,
-incorrect query identifiers, missing SQL, and excessive row counts. Four real
+incorrect query identifiers, missing SQL, and excessive row counts. Three real
 negative controls return correct data but must be rejected by the folding guard:
-`Table.AddIndexColumn` followed by `FirstN`, `Text.EndsWith`, equality to the Unicode
-literal `İstanbul`, and filtering an upstream
+`Table.AddIndexColumn` followed by `FirstN`, `Text.EndsWith`, and filtering an upstream
 `Value.NativeQuery(..., [EnableFolding=true])` result. The latter remains an
 upstream limitation: its `Odbc.Query` handler ignores subsequent folding.
-Strict EndsWith and Unicode predicates currently produce a generic SDK
-NullReferenceException. Their negative controls first evaluate the correct result
+Strict EndsWith currently produces a generic SDK
+NullReferenceException. Its negative control first evaluates the correct result
 without the strict flag, then prove the missing predicates and excess transfer
 are rejected. Expected rejection of these controls verifies the guard; it does not claim those
 operations have gained folding support.
@@ -102,7 +104,6 @@ known unsupported query fail the normal test command (exit 1), run:
 ```powershell
 ./tools/dev.ps1 test-folding -IncludeKnownLimitations -Case native_filter
 ./tools/dev.ps1 test-folding -IncludeKnownLimitations -Case text_ends
-./tools/dev.ps1 test-folding -IncludeKnownLimitations -Case text_unicode
 ```
 
 `-IncludeKnownLimitations` without `-Case` includes these queries and is expected
@@ -111,10 +112,23 @@ into passing folding expectations.
 
 ## Contribution boundaries and host integration
 
-Runtime changes are two capability declarations: `LimitOffset` and
-`SupportsStringLiterals`. They are independent of local paths and business data.
+Runtime changes comprise `LimitOffset`, `SupportsStringLiterals`, and a narrow
+Unicode type-info correction. The driver reports both SQL_VARCHAR and SQL_WVARCHAR
+as `VARCHAR`; the Unicode row is renamed to DuckDB's `NVARCHAR` alias and an
+additive implicit conversion lets it compare to UTF-8 `VARCHAR` columns. This
+does not replace the driver's existing conversion masks or cast the source column.
+Table schema and native type names are separately checked. These changes are
+independent of local paths and business data.
 The ODBC architecture and string-function escape suppression from upstream PR #72
 remain in place. Review the reproduction evidence in `upstream-review.md`.
+
+`Text.EndsWith` remains outside supported folding coverage. Enabling the ODBC
+RIGHT function makes Power Query emit `{ fn right(...) }`, which the driver
+rejects and can silently retry locally even with `--failOnFoldingFailure`.
+The official ODBC 2.0.0.1 asset was also tested, unregistered, through its ODBC ABI;
+the same escaped call fails, while native `RIGHT(...)` succeeds. Upgrading the
+driver alone is therefore not established as a fix. Driver source/build changes
+are outside this connector task's scope. See [text folding evidence](text-folding.md).
 
 The SDK/fixture/runner tooling is a generally reusable, separate contribution.
 ADBC research and any future Excel-specific experiment must stay separate from

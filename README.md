@@ -111,6 +111,9 @@ during runs. See [the development guide](docs/development.md),
 [upstream review and reproductions](docs/upstream-review.md), and the separate
 [ADBC research track](docs/experiments/adbc.md). Host GUI integration, including
 Excel's different connector availability, remains a separate final validation.
+Unicode equality and its Turkish/emoji/quoting regressions are described in
+[text folding evidence](docs/text-folding.md); EndsWith remains an explicitly
+rejected ODBC escape limitation, including in the official ODBC 2.0.0.1 diagnostic.
 
 CI builds the `.mez` on every PR and push to `main` (see `.github/workflows/build.yaml`).
 The build just runs `msbuild DuckDB.proj` on a `windows-2025` runner — the project's
@@ -119,7 +122,7 @@ uploaded as the `duckdb-power-query-connector` workflow artifact. To build local
 Windows: `msbuild DuckDB.proj` and grab `bin\AnyCPU\Debug\DuckDB.mez`.
 
 A `smoke-test` job then installs the pinned DuckDB ODBC driver and Power Query SDK
-on the isolated runner and runs the original three functional tests, the folding
+on the isolated runner and runs the functional/schema tests, the folding
 suite, and the guard's negative controls against the built `.mez`. A PR fails for
 incorrect results, unexpected local evaluation, or excessive ODBC transfer.
 

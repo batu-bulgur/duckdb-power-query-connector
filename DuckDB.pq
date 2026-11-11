@@ -135,7 +135,20 @@ shared DuckDB.Contents = (
         //
         // The sample implementation provided here will simply output the original table
         // to the user trace log, without any modification.
-        SQLGetTypeInfo = (types) =>
+        SQLGetTypeInfo = (driverTypes) =>
+            let
+                // DuckDB reports SQL_VARCHAR and SQL_WVARCHAR with the same
+                // TYPE_NAME. Give the Unicode row its valid DuckDB alias so the
+                // folding engine can distinguish Unicode constants from columns.
+                types = Table.FromRecords(
+                    Table.TransformRows(driverTypes, each
+                        if [DATA_TYPE] = ODBC[SQL_TYPE][WVARCHAR] and [TYPE_NAME] = "VARCHAR" then
+                            _ & [TYPE_NAME = "NVARCHAR"]
+                        else
+                            _),
+                    Value.Type(driverTypes)
+                )
+            in
             if (EnableTraceOutput <> true) then
                 types
             else
@@ -155,6 +168,12 @@ shared DuckDB.Contents = (
                 TolerateConcatOverflow = true,
                 // Enables connection pooling via the system ODBC manager
                 ClientConnectionPooling = false,
+                // DuckDB VARCHAR is UTF-8; comparison to its NVARCHAR alias is
+                // lossless. Add this conversion without replacing driver casts.
+                ImplicitTypeConversions = #table(
+                    {"Type1", "Type2", "ResultType"},
+                    {{"VARCHAR", "NVARCHAR", "NVARCHAR"}}
+                ),
                 // Other configuration options
                 SqlCapabilities = SqlCapabilities,
                 SQLGetInfo = SQLGetInfo,

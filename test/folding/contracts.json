@@ -121,5 +121,53 @@
       "escape"
     ],
     "maxRows": 1
+  },
+  {
+    "name": "text_unicode",
+    "maxRows": 1,
+    "sqlPatterns": [
+      "select \"id\"",
+      "where \"label\" = 'İstanbul'"
+    ]
+  },
+  {
+    "name": "text_unicode_letters",
+    "maxRows": 1,
+    "sqlPatterns": [
+      "select \"id\"",
+      "where \"label\" = 'ÇığÖŞÜçöşüİı'"
+    ]
+  },
+  {
+    "name": "text_unicode_quote",
+    "maxRows": 1,
+    "sqlPatterns": [
+      "select \"id\"",
+      "where \"label\" = 'İzmir''in'"
+    ]
+  },
+  {
+    "name": "text_unicode_nonbmp",
+    "maxRows": 1,
+    "sqlPatterns": [
+      "select \"id\"",
+      "where \"label\" = 'prefix-😀-ş'"
+    ]
+  },
+  {
+    "name": "text_unicode_no_match",
+    "maxRows": 0,
+    "sqlPatterns": [
+      "select \"id\"",
+      "where \"label\" = 'İSTANBUL'"
+    ]
+  },
+  {
+    "name": "text_unicode_million",
+    "maxRows": 1,
+    "sqlPatterns": [
+      "select \"id\"",
+      "where \"label\" = 'İstanbul'"
+    ]
   }
 ]

@@ -57,6 +57,10 @@ research/review requests do not authorize implementation or delivery.
 - Keep one independently reviewable behavior per PR. Include its tests and
   necessary documentation. Split shared infrastructure from independent feature
   families when practical; record dependencies instead of hiding them.
+- Apply [docs/versioning.md](docs/versioning.md): increment VERSION and connector
+  metadata for packaged changes, add the matching release notes and CHANGELOG
+  entry, and validate the transition against origin/main. Use patch for fixes,
+  minor for new compatible features/folding, and major for contract breaks.
 - Run relevant focused tests during development and `./tools/dev.ps1 verify`
   on the final source/artifact before delivery. Inspect actual result, SQL and
   ODBC-row evidence. Never bless baselines or weaken tests to get green CI.
@@ -79,6 +83,9 @@ research/review requests do not authorize implementation or delivery.
 - Report the PR link, merge commit, tests and material remaining limits. If
   authentication, permissions, conflicts or external CI prevent completion,
   explain the concrete blocker; never report an unobserved success.
-- Never push to MotherDuck, open/comment on an upstream issue/PR, publish a
-  release/tag, or change release/trust/security policy without a separate
-  explicit user request. This authorization is not permission to send upstream.
+- The user also authorizes automatic personal-fork releases for every SemVer
+  increment after successful main CI. Follow `Publish fork release` to completion
+  and report its release/download link; never overwrite a published version.
+- Never push to MotherDuck or open/comment on an upstream issue/PR without a
+  separate explicit request. Personal release authorization does not authorize
+  upstream publication or changing host trust/security policy.

@@ -1,0 +1,48 @@
+name: Publish fork release
+
+on:
+  workflow_run:
+    workflows: [Build connector]
+    branches: [main]
+    types: [completed]
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  # Different version commits must not replace each other's pending releases.
+  group: fork-release-${{ github.event.workflow_run.head_sha }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: >-
+      github.repository == 'batu-bulgur/duckdb-power-query-connector' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.conclusion == 'success'
+    # Match the Windows build checkout's resource bytes, including text EOLs.
+    runs-on: windows-2025
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Detect versioned source
+        id: versioned
+        shell: pwsh
+        run: |
+          $enabled = (Test-Path VERSION) -and (Test-Path tools/Publish-ForkRelease.ps1)
+          "enabled=$($enabled.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+          if (-not $enabled) { Write-Host 'Pre-versioning main commit; no fork release.' }
+      - name: Publish versioned artifact from the successful main build
+        if: steps.versioned.outputs.enabled == 'true'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_RUN_ID: ${{ github.event.workflow_run.id }}
+          SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: ./tools/Publish-ForkRelease.ps1 -SourceRunId $env:SOURCE_RUN_ID -HeadSha $env:SOURCE_SHA

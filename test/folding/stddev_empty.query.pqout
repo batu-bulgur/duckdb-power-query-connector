@@ -1,0 +1,1 @@
+#table(type table [sd = nullable number], {{null}})

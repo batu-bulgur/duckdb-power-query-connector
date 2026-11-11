@@ -78,13 +78,36 @@ SQL assertions are deliberately scoped to each case, while correct-result tests
 catch bound-parameter and escaping errors that SQL shape alone would miss.
 
 Coverage includes numeric/date/text predicates, selected columns, SUM, grouped
-COUNT, total row count, DISTINCT, LIMIT, LIMIT/OFFSET, standalone OFFSET, zero
+COUNT, sample standard deviation, total row count, DISTINCT, LIMIT, LIMIT/OFFSET, standalone OFFSET, zero
 skip, skip beyond the table, Contains/StartsWith, apostrophes,
 and literal `%`/`_` in text matching. Unicode equality is covered with Turkish
 letters, dotted/dotless I and case variants, apostrophes, supplementary-plane
 characters, and an empty result. Each of the main and Unicode folding tables
 contains one million rows; the Unicode equality case must transfer just one row.
 This is a folding regression fixture, not a throughput or peak-memory benchmark.
+
+Standard deviation uses the existing ODBC `AstVisitor.Functions`/`Invocation`
+hooks, registering only `List.StandardDeviation`. A direct numeric column in a
+global or grouped aggregate is translated to
+`CASE COUNT(column) WHEN 1 THEN 0 ELSE STDDEV_SAMP(column) END`. M ignores nulls,
+returns zero for a singleton, and returns null for empty/all-null inputs; the
+COUNT/CASE wrapper preserves those semantics. The existing visitor resolves and
+quotes the column; no source SQL or identifiers are assembled from user text.
+Other argument shapes and non-numeric columns keep their existing local behavior.
+No public connector parameters, driver capabilities, ODBC drivers, or installed
+Power BI binaries/configuration are changed for this mapping.
+
+Six folding cases check sample-versus-population results, direct list aggregation,
+global and grouped aggregation, integer/decimal/double columns, negative and constant values, nulls,
+singletons, an empty input, a large numeric offset, and Turkish/quoted identifiers.
+The million-row case compares SD to the independent equally-spaced sample
+formula within an absolute tolerance of `0.000001`, then returns the source count
+only when the check passes. This avoids exact floating-point snapshots. Its SQL
+must contain `STDDEV_SAMP` and `COUNT`, and ODBC may return at most one row.
+`stddev_semantics` also compares the small fixture's connector results to the
+same calculations over `Table.Buffer`, which forces the reference into M.
+These are aggregate folding checks; Power BI's full column-profiling UI still
+requires a separate host integration check.
 
 `verify` also tests the runner against exit-zero/failed-JSON, missing diagnostics,
 incorrect query identifiers, missing SQL, and excessive row counts. Three real
@@ -113,7 +136,8 @@ into passing folding expectations.
 ## Contribution boundaries and host integration
 
 Runtime changes comprise `LimitOffset`, `SupportsStringLiterals`, and a narrow
-Unicode type-info correction. The driver reports both SQL_VARCHAR and SQL_WVARCHAR
+Unicode type-info correction, plus the numeric sample-SD mapping above.
+The driver reports both SQL_VARCHAR and SQL_WVARCHAR
 as `VARCHAR`; the Unicode row is renamed to DuckDB's `NVARCHAR` alias and an
 additive implicit conversion lets it compare to UTF-8 `VARCHAR` columns. This
 does not replace the driver's existing conversion masks or cast the source column.

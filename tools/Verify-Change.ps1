@@ -14,7 +14,9 @@ if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect untracked files.' }
 $paths = @($paths + $untracked | Sort-Object -Unique)
 [xml]$project = Get-Content (Join-Path $root 'DuckDB.proj') -Raw
 $resources = @($project.Project.ItemGroup.MezContent | ForEach-Object { [string]$_.Include })
-$scope = Get-ValidationScope -Paths $paths -Resources $resources -ForceFull:$ForceFull
+$workflowDiff = @(& git -C $root diff --no-color --unified=0 $baseSha -- .github/workflows/build.yaml)
+if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect workflow environment changes.' }
+$scope = Get-ValidationScope -Paths $paths -Resources $resources -ForceFull:$ForceFull -RuntimeEnvironmentChanged:(Test-RuntimeWorkflowChange $workflowDiff)
 if ($GitHubOutput) { "scope=$scope" | Add-Content -LiteralPath $env:GITHUB_OUTPUT }
 if ($ScopeOnly) { return $scope }
 & (Join-Path $PSScriptRoot 'Test-ValidationScope.ps1')

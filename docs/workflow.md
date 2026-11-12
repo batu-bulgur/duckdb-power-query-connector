@@ -64,7 +64,9 @@ Both jobs remain required for every PR/main head. `smoke-test` uses the scope
 selected from the actual Git diff and project resource allowlist. Metadata-only
 changes do not install ODBC or seed million-row fixtures; their current build is
 still source/hash checked and loaded by the pinned SDK. Runtime/test/toolchain or
-unknown changes retain the full strict suite. Manual workflow dispatch always
+unknown changes retain the full strict suite. Changes to the build runner image,
+action versions or detected SDK/driver setup lines also require full validation.
+Manual workflow dispatch always
 forces full verification. Scope tests cover mixed, renamed/deleted, packaged,
 unknown and empty changes; metadata work is not represented by a skipped check.
 

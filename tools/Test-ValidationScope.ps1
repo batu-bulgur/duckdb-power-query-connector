@@ -35,4 +35,9 @@ foreach ($case in $cases) {
     if ($scope -ne $case.expected) { throw "Wrong scope for $($case.paths -join ', '): $scope" }
 }
 if ((Get-ValidationScope @('docs/only.md') $resources -ForceFull) -ne 'full') { throw 'Manual full verification was ignored.' }
-Write-Host "PASS $($cases.Count + 1) validation-scope cases; runtime/test/toolchain/unknown changes require full validation."
+foreach ($line in @('+ runs-on: windows-2022','+ uses: actions/checkout@v7','- $asset = "duckdb_odbc.zip"','+ ./tools/dev.ps1 bootstrap -new-option')) {
+    if (-not (Test-RuntimeWorkflowChange @($line))) { throw "Missed runtime environment change: $line" }
+}
+if (Test-RuntimeWorkflowChange @('+++ b/.github/workflows/build.yaml','+ # ODBC metadata comment','+ if: needs.build.outputs.validation-scope == ''full''')) { throw 'Metadata routing was treated as an environment change.' }
+if ((Get-ValidationScope @('.github/workflows/build.yaml') $resources -RuntimeEnvironmentChanged) -ne 'full') { throw 'Environment change did not require full validation.' }
+Write-Host "PASS $($cases.Count + 7) validation-scope cases; runtime/test/toolchain/environment/unknown changes require full validation."

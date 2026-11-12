@@ -5,6 +5,7 @@ param(
     [Parameter(Mandatory)][ValidatePattern('^[a-f0-9]{40}$')][string]$HeadSha
 )
 $ErrorActionPreference = 'Stop'
+$OutputEncoding = [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
 $PSNativeCommandUseErrorActionPreference = $false
 $repository = 'batu-bulgur/duckdb-power-query-connector'
 if ($env:GITHUB_REPOSITORY -ne $repository) { throw 'Automatic publishing is restricted to the personal fork.' }
@@ -23,7 +24,11 @@ if ((& git -C $root rev-parse HEAD) -ne $HeadSha) { throw 'Checkout differs from
 if ($LASTEXITCODE -ne 0) { throw 'Release commit is not on main.' }
 $versionChanged = @(& git -C $root diff --name-only HEAD^ HEAD -- VERSION)
 if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect the version change.' }
-if ('VERSION' -notin $versionChanged) { Write-Host 'No version increment in this commit; no release needed.'; return }
+$metadataOnly = 'VERSION' -notin $versionChanged
+if ($metadataOnly -and -not (Test-ReleaseNoteCorrection -Root $root -BaseRef HEAD^ -Path "docs/release-notes/$((Get-ReleaseState $root).Version).md")) {
+    Write-Host 'No version increment or reviewed current-note correction; no release needed.'
+    return
+}
 & (Join-Path $PSScriptRoot 'Test-Version.ps1') -BaseRef HEAD^
 $state = Get-ReleaseState $root
 $tag = $state.Tag
@@ -38,9 +43,10 @@ $existing = & gh api "repos/$repository/releases/tags/$tag" 2>$null
 if ($LASTEXITCODE -eq 0) {
     $release = ($existing -join "`n") | ConvertFrom-Json
     $tagRef = Invoke-GhJson -Arguments @('api',"repos/$repository/git/ref/tags/$tag")
+    $releaseSha = if ($metadataOnly) { $tagRef.object.sha } else { $HeadSha }
     $missingAssets = @(@('duckdb-power-query-connector.mez','SHA256SUMS','release-manifest.json') | Where-Object { $_ -notin $release.assets.name })
     $asset = @($release.assets | Where-Object name -eq 'duckdb-power-query-connector.mez')
-    if ($release.draft -or $tagRef.object.type -ne 'commit' -or $tagRef.object.sha -ne $HeadSha -or
+    if ($release.draft -or $tagRef.object.type -ne 'commit' -or $tagRef.object.sha -ne $releaseSha -or
         $missingAssets.Count -gt 0 -or $release.assets.Count -ne 3 -or $asset.Count -ne 1) {
         throw 'Existing release is incomplete or targets another commit; never overwrite a published version.'
     }
@@ -53,13 +59,41 @@ if ($LASTEXITCODE -eq 0) {
     Assert-PackageSources $root $publishedMez
     $publishedHash = (Get-FileHash -LiteralPath $publishedMez -Algorithm SHA256).Hash.ToLowerInvariant()
     $publishedManifest = Get-Content (Join-Path $published 'release-manifest.json') -Raw | ConvertFrom-Json
-    if ($publishedManifest.commit -ne $HeadSha -or $publishedManifest.version -ne $state.Version -or
+    if ($publishedManifest.commit -ne $releaseSha -or $publishedManifest.version -ne $state.Version -or
         $publishedManifest.sha256 -ne $publishedHash -or $asset[0].digest -ne "sha256:$publishedHash") {
         throw 'Existing published artifact/manifest digest verification failed.'
+    }
+    if ($metadataOnly) {
+        # The correction changes only the description of the original release.
+        & git -C $root merge-base --is-ancestor $releaseSha origin/main
+        if ($LASTEXITCODE -ne 0) { throw 'Published release commit is not on main.' }
+        $publishedVersion = & git -C $root show ('{0}:VERSION' -f $releaseSha)
+        if ($LASTEXITCODE -ne 0 -or ($publishedVersion -join "`n").Trim() -ne $state.Version) { throw 'Published tag version differs.' }
+        $sourceRun = Invoke-GhJson -Arguments @('api',"repos/$repository/actions/runs/$($publishedManifest.buildRun)")
+        Assert-ReleaseRun -Run $sourceRun -HeadSha $releaseSha -Repository $repository
+        $previous = & git -C $root show ('HEAD^:docs/release-notes/{0}.md' -f $state.Version)
+        if ($LASTEXITCODE -ne 0) { throw 'Cannot read original correction notes.' }
+        $current = Get-Content -LiteralPath $state.Notes -Raw
+        $before = Get-ReleaseIdentity $release
+        $release = Invoke-GhJson -Arguments @('api',"repos/$repository/releases/tags/$tag")
+        if ((Get-ReleaseIdentity $release) -cne $before) { throw 'Published release identity changed during validation.' }
+        if (Test-ReleaseBodyCorrection -PublishedBody $release.body -PreviousNotes ($previous -join "`n") -CurrentNotes $current) {
+            & gh release edit $tag --repo $repository --notes-file $state.Notes --verify-tag
+            if ($LASTEXITCODE -ne 0) { throw 'Release note correction failed.' }
+        }
+        $after = Invoke-GhJson -Arguments @('api',"repos/$repository/releases/tags/$tag")
+        $afterTag = Invoke-GhJson -Arguments @('api',"repos/$repository/git/ref/tags/$tag")
+        if ((Get-ReleaseIdentity $after) -cne $before -or $afterTag.object.sha -ne $releaseSha -or
+            (Test-ReleaseBodyCorrection -PublishedBody $after.body -PreviousNotes ($previous -join "`n") -CurrentNotes $current)) {
+            throw 'Release correction changed identity/assets or did not produce the reviewed notes.'
+        }
+        Write-Host "Corrected and verified release notes; original tag/assets preserved: $($after.html_url)"
+        return
     }
     Write-Host "Already published: $($release.html_url)"
     return
 }
+if ($metadataOnly) { throw 'A metadata correction requires an existing complete published release.' }
 $tagResult = & gh api "repos/$repository/git/ref/tags/$tag" 2>$null
 if ($LASTEXITCODE -eq 0) {
     $tagRef = ($tagResult -join "`n") | ConvertFrom-Json

@@ -27,6 +27,9 @@ packaging validation before adoption. Versions below 1.0 remain experimental.
   before/after Git blob pairs in `docs/release-note-corrections.json`.
 - Release notes must be in English, with `Added`, `Query folding`,
   `Known limitations` and `Validation` sections. Include `Fixed` when applicable.
+  Use absolute web URLs (prefer the version tag for repository documents) or
+  same-page anchors. Relative file links lose their directory context in GitHub
+  release descriptions and are rejected by validation.
   Test data may retain Turkish/Unicode text when needed for language coverage.
 
 The first tracked fork version is 0.3.0, following the upstream v0.2.0 base. The
@@ -46,7 +49,9 @@ versioned artifacts; release preparation never regenerates test baselines.
 runs, only in the named personal fork. It checks the triggering event, branch,
 workflow, success conclusion and exact SHA again. PR events cannot publish.
 The workflow checks out the validated SHA and downloads that run's artifact;
-it does not rebuild. A main commit without a VERSION change produces no release.
+it does not rebuild. A main commit without a VERSION change produces no new
+release. An exact reviewed correction of the current published version's notes
+may update its existing description after successful main CI.
 Main builds and releases use per-commit concurrency groups so a newer version
 cannot cancel an older version waiting for a runner. Superseded PR checks may
 still be cancelled. Pre-versioning main commits are ignored by the release workflow.
@@ -75,5 +80,10 @@ commit, binary or checksums, or imply that an unreleased feature was included.
 Record the note path, exact original/corrected Git blob IDs and an English reason
 in `docs/release-note-corrections.json`. The transition check accepts only that
 exact content pair; other historical edits still fail. Review the correction in
-a normal PR and update the existing GitHub release description to match. A
-documentation-only correction does not increment VERSION or produce a new binary.
+a normal PR. After main CI, the publisher applies an exact current-version
+correction through `gh release edit --notes-file`, verifies the original tag,
+manifest and package, and checks that release identity and all asset IDs, sizes
+and digests remain unchanged. It refuses unexpected manual description edits;
+an already matching correction is idempotent. Corrections to other historical
+versions require a separately scoped update. A documentation-only correction
+does not increment VERSION or produce a new binary.

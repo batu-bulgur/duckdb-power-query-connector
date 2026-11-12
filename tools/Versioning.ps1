@@ -39,6 +39,12 @@ function Get-ReleaseState {
     foreach ($heading in @('Added','Query folding','Known limitations','Validation')) {
         if ($text -notmatch "(?m)^## $heading\s*$") { throw "Release notes are missing section: $heading" }
     }
+    # Release descriptions do not retain the Markdown file's directory context.
+    foreach ($link in [regex]::Matches($text, '\[[^\]]+\]\(([^)]+)\)')) {
+        if ($link.Groups[1].Value -notmatch '^(https?://|#)') {
+            throw 'Release notes require absolute web links or same-page anchors.'
+        }
+    }
     [pscustomobject]@{Version=$version;Kind=$kind;Notes=$notes;Tag="fork-v$version"}
 }
 
@@ -98,4 +104,23 @@ function Test-ReleaseNoteCorrection {
         $_.toBlob -ceq $currentBlob -and -not [string]::IsNullOrWhiteSpace($_.reason)
     })
     return $matches.Count -eq 1
+}
+
+function Test-ReleaseBodyCorrection {
+    param([string]$PublishedBody,[string]$PreviousNotes,[string]$CurrentNotes)
+    $published = $PublishedBody.Replace("`r`n","`n").Trim()
+    $previous = $PreviousNotes.Replace("`r`n","`n").Trim()
+    $current = $CurrentNotes.Replace("`r`n","`n").Trim()
+    if ($published -ceq $current) { return $false }
+    if ($published -cne $previous) { throw 'Published notes contain an unexpected edit; refusing to overwrite it.' }
+    return $true
+}
+
+function Get-ReleaseIdentity {
+    param($Release)
+    [ordered]@{
+        id=$Release.id;tag=$Release.tag_name;target=$Release.target_commitish;
+        name=$Release.name;published=$Release.published_at;draft=$Release.draft;prerelease=$Release.prerelease
+        assets=@($Release.assets | Sort-Object name | Select-Object id,name,size,digest)
+    } | ConvertTo-Json -Depth 5 -Compress
 }

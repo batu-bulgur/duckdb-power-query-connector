@@ -83,9 +83,30 @@ $noteDirectory = Join-Path $run 'docs/release-notes'
 '0.3.0' | Set-Content (Join-Path $run 'VERSION')
 "<!-- release-type: minor -->`n## Added`nSynthetic`n## Query folding`nSynthetic`n## Known limitations`nSynthetic`n## Validation`nSynthetic" | Set-Content (Join-Path $noteDirectory '0.3.0.md')
 $null = Get-ReleaseState $run
+$fixtureNotes = Join-Path $noteDirectory '0.3.0.md'
+$validNotes = Get-Content -LiteralPath $fixtureNotes -Raw
+($validNotes + "`n[scope](../scope.md)") | Set-Content -LiteralPath $fixtureNotes
+Must-Reject 'relative release-description links' { Get-ReleaseState $run }
+($validNotes + "`n[scope](https://example.com/scope.md)`n[section](#validation)") | Set-Content -LiteralPath $fixtureNotes
+$null = Get-ReleaseState $run
+if (-not (Test-ReleaseBodyCorrection 'old notes' 'old notes' 'corrected notes')) { throw 'Expected a reviewed note correction.' }
+if (Test-ReleaseBodyCorrection "corrected notes`r`n" 'old notes' 'corrected notes') { throw 'A completed correction must be idempotent.' }
+Must-Reject 'overwriting an unexpected published-note edit' { Test-ReleaseBodyCorrection 'user-edited notes' 'old notes' 'corrected notes' }
+$release = [pscustomobject]@{id=1;tag_name='fork-v0.3.0';target_commitish=('a'*40);name='Synthetic release';published_at='2026-01-01';draft=$false;prerelease=$false;body='old notes';assets=@([pscustomobject]@{id=2;name='fixture.mez';size=4;digest=('b'*64)})}
+$identity = Get-ReleaseIdentity $release
+$release.body = 'corrected notes'
+if ((Get-ReleaseIdentity $release) -cne $identity) { throw 'Body-only edits must preserve release identity.' }
+foreach ($field in @('id','name','size','digest')) {
+    $changed = $release | ConvertTo-Json -Depth 5 | ConvertFrom-Json
+    $changed.assets[0].$field = if ($field -in @('id','size')) { 99 } else { 'changed' }
+    if ((Get-ReleaseIdentity $changed) -ceq $identity) { throw "Release identity missed changed asset $field" }
+}
+$release.tag_name = 'fork-v0.4.0'
+if ((Get-ReleaseIdentity $release) -ceq $identity) { throw 'Release identity missed a changed tag.' }
 '[Version = "0.2.0"]' | Set-Content (Join-Path $run 'DuckDB.pq')
 Must-Reject 'version/connector metadata mismatch' { Get-ReleaseState $run }
 '0.3.1' | Set-Content (Join-Path $run 'VERSION')
 '[Version = "0.3.1"]' | Set-Content (Join-Path $run 'DuckDB.pq')
 Must-Reject 'version increment without release notes' { Get-ReleaseState $run }
 Write-Host "Version transitions/package checks and $checks rejection checks passed."
+& (Join-Path $PSScriptRoot 'Test-ReleasePublisher.ps1')

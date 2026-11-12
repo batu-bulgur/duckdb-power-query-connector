@@ -64,6 +64,15 @@ helpers. This syntax is supported by the separately pinned CI ODBC 1.4.4.0;
 the official [1.4 lambda documentation](https://duckdb.org/docs/1.4/sql/functions/lambda)
 describes both forms. No driver registration, DSN or session setting is changed.
 
+The first hosted run also caught a 1.4.4 nested-list reduction defect: repeated
+identical text/pattern rows could produce different accepted match positions.
+The consumers matrix reported 43 mismatches out of 5,760 comparisons, while its
+local 2.0.0 counterpart passed. Replaying the captured SQL directly in 1.4.4
+reproduced inconsistent overlap positions. The reducer now keeps only scalar
+fields (last match and an internal comma-separated position string), then
+converts those positions back to a BIGINT list. The repeated-overlap strict
+case and the original unchanged differential expectations guard this fix.
+
 ## Validation contract
 
 Six paired matrices compare 28,335 values/errors against independently
@@ -77,20 +86,19 @@ Strict cases additionally check expected data, the SDK folding flag, one
 successful SQL/ODBC query and its transfer budget. They include surrogate
 boundaries, GUI paths, grouping/distinct/index chains and a million-row filter.
 Source-free M references and correct-result negative controls remain separate.
-The final local complete suite passed on 2026-11-13 with SDK 2.155.2 and the
-installed ODBC engine v2.0.0: 188 distinct strict folding cases, 42 functional
-tests, 119 source-free references, seven negative controls, four native failure
-reproducers and 16 runner rejection controls. The new group contributes 26 strict
-cases and 28,335 paired comparisons; total paired scalar coverage is 217,707.
-The million-row filter transfers one ODBC row. All 20 allowlisted package
-resources match the source and the SDK loads the artifact.
+The required complete suite contains 189 distinct strict folding cases,
+42 functional tests, 120 source-free references, seven negative controls,
+four native failure reproducers and 16 runner rejection controls. The new group
+contributes 27 strict cases and 28,335 paired comparisons; total paired scalar
+coverage is 217,707. The million-row filter has a one-row transfer budget.
+All 20 allowlisted package resources must match the source and load in the SDK.
 
-The local complete-suite receipt is
-`.agent/verification/aac4fdab323f4585a68920d45fac192d/summary.json`, with MEZ SHA256
-`976B92EC608225A4F624B36D35CC3118E2317AF175FE1DC7EE8F0139F47FF6B4`.
-These ignored files are local evidence, not published assets. Hosted PR/main
-verification must independently pass with pinned ODBC 1.4.4.0 before release;
-its published artifact has separate checksums and source-integrity verification.
+Local complete verification uses SDK 2.155.2 and installed ODBC engine v2.0.0.
+Hosted PR/main verification independently uses pinned ODBC 1.4.4.0. Both must
+pass before delivery; final source/hash receipts and hosted results are linked
+from [PR #10](https://github.com/batu-bulgur/duckdb-power-query-connector/pull/10).
+Ignored `.agent` receipts remain local evidence. Published assets have separate
+checksums and source-integrity verification against the release commit.
 
 SDK/ODBC evidence does not establish Excel or Power BI Desktop GUI integration.
 Existing native TIMESTAMPTZ/UTC-range boundaries remain in date-parity.md.

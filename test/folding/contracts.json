@@ -1842,5 +1842,14 @@
       "shape_parts",
       "list_concat"
     ]
+  },
+  {
+    "name": "parity_shape_overlap_rows",
+    "maxRows": 24,
+    "sqlPatterns": [
+      "shape_parts",
+      "positions",
+      "list_reduce"
+    ]
   }
 ]

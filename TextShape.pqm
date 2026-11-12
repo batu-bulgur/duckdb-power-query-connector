@@ -65,7 +65,10 @@ let
                 signature=Co({Sig(a,"text",f=Text.Replace,f=Text.Replace),Sig(b,"text",false,false),if f=Text.Replace then Sig(replacement,"text",false,false) else "NULL"}),
                 inputs="SELECT " & Units(a,r) & " AS t," & Units(b,r) & " AS p," & (if f=Text.Replace then Units(replacement,r) else "NULL::BIGINT[]") & " AS replacement",
                 hits="list_filter(range(0,CASE WHEN len(p)=0 THEN 0 ELSE greatest(len(t)-len(p)+1,0) END),lambda i: list_slice(t,i+1,i+len(p))=p)",
-                nonoverlap="list_reduce(list_transform(" & hits & ",lambda i: [i]),lambda acc,v: CASE WHEN len(acc)=0 OR v[1]>=list_last(acc)+len(p) THEN list_concat(acc,v) ELSE acc END,[]::BIGINT[])",
+                // A nested-list accumulator can corrupt repeated rows in 1.4.4.
+                // Scalar fields retain the last match and its accepted positions.
+                state="(list_reduce(list_transform(" & hits & ",lambda i: struct_pack(last := i,positions := CAST(i AS VARCHAR))),lambda acc,v: CASE WHEN v.last>=acc.last+len(p) THEN struct_pack(last := v.last,positions := acc.positions||','||v.positions) ELSE acc END,struct_pack(last := -CAST(len(p) AS BIGINT),positions := ''::VARCHAR))).positions",
+                nonoverlap="list_transform(list_filter(string_split(" & state & ",','),lambda x: x<>''),lambda x: CAST(x AS BIGINT))",
                 bounds="SELECT *, list_concat([-len(p)]," & nonoverlap & ",[len(t)]) AS bounds FROM (" & inputs & ") AS shape_input",
                 parts="SELECT *, CASE WHEN len(p)=0 THEN [t] ELSE list_transform(range(1,len(bounds)),lambda i: list_slice(t,bounds[i]+len(p)+1,bounds[i+1])) END AS parts FROM (" & bounds & ") AS shape_matches",
                 value=if f=Text.Split then "list_transform(parts,lambda x: struct_pack(v := x,e := NULL::VARCHAR))" else "flatten(list_transform(range(1,len(parts)+1),lambda i: CASE WHEN i=1 THEN parts[i] ELSE list_concat(replacement,parts[i]) END))",

@@ -1,0 +1,1 @@
+let t=#table(type table[label=nullable text,needle=nullable text],List.Combine(List.Transform({1..8},each {{"aaaaa","a"},{"aaaaa","aa"},{"aaaaa","aaa"}}))),a=Table.AddColumn(t,"tail",each List.Last(Text.Split([label],[needle])),type nullable text) in Table.Sort(Table.SelectColumns(a,{"needle","tail"}),{{"needle",Order.Ascending}})

@@ -93,8 +93,10 @@ folding contract. Detailed evidence and the native EndsWith mapping are in
 
 ## Known limits
 
-The prototype does not claim every M operation folds. The negative controls
-demonstrate local indexing and downstream native-query folding are still rejected
-by the test guard. No ADBC migration, production-data benchmark, hosted CI run, or
-Excel/Power BI GUI validation follows from these SDK results. Keep these claims
-separate when preparing upstream pull requests.
+The prototype does not claim every M operation folds. At the original review
+baseline, indexing and downstream native-query folding were negative controls.
+The subsequent [scalar/index implementation](scalar-parity.md) promotes measured
+index plans to positive coverage; native-query transformations, inaccessible
+structural constructors and culture comparers remain negative controls. Local SDK
+results alone establish no ADBC migration, production-data benchmark, hosted CI
+result or Excel/Power BI GUI validation. Keep each source of evidence separate.

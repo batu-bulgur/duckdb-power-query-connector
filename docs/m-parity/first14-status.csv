@@ -1,0 +1,15 @@
+function,status,scope,remaining
+Text.EndsWith,implemented_with_boundary,UTF-16 default and Ordinal/OrdinalIgnoreCase; projections and filters,Opaque FromCulture/custom comparer context
+Text.Length,implemented,Nullable UTF-16 units and encoded intermediate values,Other M expressions require their own translation
+Text.Middle,implemented_with_native_failure,Dynamic bounds; clipping; surrogate results; exact normal errors,Uncatchable native Int32 length-overflow family
+Text.Range,implemented,Dynamic bounds; remainder; surrogate results; normal error records,Other M argument expressions require their own translation
+Text.PositionOf,implemented_with_boundary,First/Last/All; dynamic occurrence; UTF-16; Ordinal/OrdinalIgnoreCase,Opaque culture comparer and inaccessible row constructors
+Text.PadStart,implemented,Dynamic count/pad; UTF-16; no truncation; normal errors,Invalid static argument types remain M validation
+Text.PadEnd,implemented,Dynamic count/pad; UTF-16; no truncation; normal errors,Invalid static argument types remain M validation
+Text.Trim,implemented_with_boundary,M whitespace; constant characters/lists; dynamic character; surrogate/NUL,Row-dependent list constructors unavailable through SDK hook
+Text.TrimStart,implemented_with_boundary,M whitespace; constant characters/lists; dynamic character; surrogate/NUL,Row-dependent list constructors unavailable through SDK hook
+Text.TrimEnd,implemented_with_boundary,M whitespace; constant characters/lists; dynamic character; surrogate/NUL,Row-dependent list constructors unavailable through SDK hook
+Number.Round,implemented_with_native_failure,Five modes; dynamic args; full digit endpoints; numeric range; decimal/Double behavior,Native CLR decimal-overflow family; unsupported surrounding expressions
+Value.Equals,implemented_with_boundary,Type-tagged primitive/known-list equality; numeric precision; NULL/NaN; constant structures,SDK-inaccessible row-dependent structural construction and other M objects
+Value.NullableEquals,implemented_with_boundary,Same value mapping with nullable propagation and precision validation,SDK-inaccessible row-dependent structural construction and other M objects
+Table.AddIndexColumn,implemented_on_tracked_plans,Order/filter/skip/take/group/distinct; sequential FP steps; names/type annotations,Other table operators require plan handlers; not all M compositions are claimed

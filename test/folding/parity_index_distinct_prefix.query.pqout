@@ -1,0 +1,1 @@
+#table(type table[category=text,ix=number],{{"even",0},{"odd",1}})

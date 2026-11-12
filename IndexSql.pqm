@@ -1,0 +1,19 @@
+// The first value retains the M initial value. Further values use sequential
+// IEEE-754 additions, as the pinned SDK does (not ordinal*increment).
+(sourceSql,names,order,name,start,step,cap,Q,L) as text =>
+let
+    seq=List.First(List.Select(List.Transform({0..List.Count(names)},each "__pq_index_sequence_" & Text.From(_)),each not List.Contains(names,_))),
+    source=if cap=null then sourceSql else "SELECT * FROM (" & sourceSql & ") AS q ORDER BY " & Q(order) & " LIMIT " & L(cap),
+    integer=not Number.IsNaN(start) and not Number.IsNaN(step) and Number.Abs(start)<9007199254740992 and Number.Abs(step)<9007199254740992 and Number.RoundDown(start)=start and Number.RoundDown(step)=step,
+    fast=if integer then "abs(" & L(start) & ")+greatest(n-1,0)*abs(" & L(step) & ")<=9007199254740991" else "FALSE",
+    absorbed="CAST(" & L(start) & " AS DOUBLE)+CAST(" & L(step) & " AS DOUBLE)=CAST(" & L(start) & " AS DOUBLE)",
+    firstKind=try (if Value.Equals(start,Number.FromText(Number.ToText(start,"R","en-US"),"en-US"),Precision.Decimal) then "decimal" else "double") otherwise "double",
+    sql="WITH RECURSIVE pq_index_base AS (" & source & "), pq_index_numbered AS (SELECT *, ROW_NUMBER() OVER (ORDER BY " & Q(order) & ") AS " & Q(seq) & " FROM pq_index_base), " &
+        "pq_index_bounds AS (SELECT *, " & fast & " AS fast, " & absorbed & " AS absorbed FROM (SELECT count(*) AS n FROM pq_index_numbered) AS m), " &
+        "pq_index_values(i,v) AS (SELECT 1::BIGINT, CAST(" & L(start) & " AS DOUBLE) FROM pq_index_bounds WHERE NOT (fast OR absorbed) AND n>0 UNION ALL " &
+            "SELECT i+1, CAST(v+CAST(" & L(step) & " AS DOUBLE) AS DOUBLE) FROM pq_index_values, pq_index_bounds WHERE i<n) " &
+        "SELECT " & Text.Combine(List.Transform(names & {order},each "b." & Q(_)),", ") & ", struct_pack(v := CASE WHEN b." & Q(seq) & "=1 THEN " & L(Number.ToText(start,"R","en-US")) &
+            " WHEN bounds.fast THEN CAST(" & L(start) & "+(b." & Q(seq) & "-1)*" & L(step) & " AS VARCHAR) WHEN bounds.absorbed THEN CAST(CAST(" & L(start) & " AS DOUBLE) AS VARCHAR) ELSE CAST(r.v AS VARCHAR) END, " &
+            "e := NULL::VARCHAR, k := CASE WHEN b." & Q(seq) & "=1 THEN '" & firstKind & "' ELSE 'double' END) AS " & Q(name) &
+        " FROM pq_index_numbered AS b CROSS JOIN pq_index_bounds AS bounds LEFT JOIN pq_index_values AS r ON b." & Q(seq) & "=r.i"
+in sql

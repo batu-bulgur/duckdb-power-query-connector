@@ -1,0 +1,313 @@
+{
+  "snapshot_date": "2026-11-12",
+  "scope": "Published Microsoft Learn M reference plus this PQTest process; not an Excel/Power BI host inventory or full parity proof",
+  "connector_baseline": {
+    "commit": "d41d670e6f150f4166e4b5ce8c33197a6a854019",
+    "working_tree_initially_clean": true,
+    "concurrent_changes_observed": [
+      "DuckDB.pq",
+      "tools/Seed-Fixture.ps1",
+      "tools/Test-NegativeControls.ps1",
+      "tools/Test-Result.ps1",
+      "tools/Test-Runner.ps1"
+    ],
+    "concurrent_changes_validated": false,
+    "note": "Connector descriptions and existing case fields refer to the initially inspected baseline; research did not edit runtime/test files."
+  },
+  "documentation": {
+    "toc_url": "https://learn.microsoft.com/en-us/powerquery-m/toc.json",
+    "toc_sha256": "848c607c79e1c306b02d96e21c1ef1a526a3a16192efac51db8873f55f1f37ca",
+    "downloaded_pages": 770,
+    "download_failures": 0,
+    "downloaded_bytes": 2541008,
+    "retrieved_at_utc": "2026-11-11T21:21:47.252004+00:00",
+    "categories": {
+      "Accessing data functions": 89,
+      "Binary functions": 40,
+      "Combiner functions": 5,
+      "Comparer functions": 4,
+      "Date functions": 58,
+      "DateTime functions": 26,
+      "DateTimeZone functions": 16,
+      "Duration functions": 13,
+      "Error handling functions": 4,
+      "Expression functions": 3,
+      "Function values": 6,
+      "Lines functions": 4,
+      "List functions": 71,
+      "Logical functions": 3,
+      "Number functions": 52,
+      "Record functions": 23,
+      "Replacer functions": 2,
+      "Splitter functions": 10,
+      "Table functions": 119,
+      "Text functions": 44,
+      "Time functions": 10,
+      "Type functions": 24,
+      "Uri functions": 4,
+      "Value functions": 37
+    },
+    "documented_named_functions": 660,
+    "documented_intrinsic_constructors": 7,
+    "non_callable_reference_entries": 43,
+    "category_links_missing_from_toc": [],
+    "toc_name_discrepancies": [
+      {
+        "toc_name": "Table.PartionKey",
+        "signature_name": "Table.PartitionKey",
+        "url": "https://learn.microsoft.com/en-us/powerquery-m/table-partitionkey"
+      }
+    ]
+  },
+  "sdk": {
+    "application": "2.155.2.0",
+    "mashup_engine": "2.155.504.0",
+    "extension_loaded": false,
+    "shared_values": 886,
+    "functions": 691,
+    "inspection_errors": 0,
+    "sdk_only_function_names": [
+      "Action.Return",
+      "Action.Sequence",
+      "Action.Try",
+      "Action.View",
+      "Action.ViewError",
+      "Action.ViewFunction",
+      "Binary.End",
+      "Cdpa.Database",
+      "DataSource.TestConnection",
+      "Delta.Since",
+      "Environment.Configuration",
+      "Environment.FeatureSwitch",
+      "Environment.Libraries",
+      "Fact",
+      "FactCheck",
+      "Facts",
+      "Facts.Summarize",
+      "ListAction.ParallelExecute",
+      "MQ.Queue",
+      "PQTest",
+      "PQTestMetadata",
+      "Parquet.Document",
+      "Parquet.Metadata",
+      "Resource.Access",
+      "TableAction.DeleteRows",
+      "TableAction.InsertRows",
+      "TableAction.Tee",
+      "TableAction.UpdateRows",
+      "Tests.Summarize",
+      "Theories.Summarize",
+      "Theory",
+      "ValidateTestOptions",
+      "Value.ResourceExpression",
+      "Value.ToText",
+      "ValueAction.BeginTransaction",
+      "ValueAction.CommitTransaction",
+      "ValueAction.NativeStatement",
+      "ValueAction.Replace"
+    ],
+    "documented_only_names": [
+      "#binary",
+      "#date",
+      "#datetime",
+      "#datetimezone",
+      "#duration",
+      "#table",
+      "#time",
+      "Arrow.Document",
+      "Arrow.FromBinary",
+      "Arrow.ToBinary",
+      "Excel.CurrentWorkbook",
+      "FabricAI.Prompt",
+      "Json.SchemaFromType",
+      "Table.ClearDown"
+    ],
+    "shared_inventory_result_sha256": "bb0141d5d30507143461227cf3a40f8ea6067b145863ea2aa13037225258e30d"
+  },
+  "catalog": {
+    "union_rows": 705,
+    "overlap": 653,
+    "candidates": 67,
+    "priorities": {
+      "1": 14,
+      "2": 47,
+      "3": 6
+    },
+    "full_parity_proven": 0
+  },
+  "semantic_probes": {
+    "m_status": "Passed",
+    "m_results": [
+      {
+        "Name": "unicode_length",
+        "HasError": false,
+        "Result": "4"
+      },
+      {
+        "Name": "middle_overrun",
+        "HasError": false,
+        "Result": "ef"
+      },
+      {
+        "Name": "range_overrun",
+        "HasError": true,
+        "Result": null
+      },
+      {
+        "Name": "pad_short_target",
+        "HasError": false,
+        "Result": "abcdef"
+      },
+      {
+        "Name": "trim_whitespace",
+        "HasError": false,
+        "Result": "abc"
+      },
+      {
+        "Name": "round_positive_tie",
+        "HasError": false,
+        "Result": "2.0"
+      },
+      {
+        "Name": "round_negative_tie",
+        "HasError": false,
+        "Result": "-2.0"
+      },
+      {
+        "Name": "null_equality",
+        "HasError": false,
+        "Result": "true"
+      },
+      {
+        "Name": "position_missing",
+        "HasError": false,
+        "Result": "-1"
+      },
+      {
+        "Name": "combine_null",
+        "HasError": false,
+        "Result": "a-b"
+      },
+      {
+        "Name": "empty_sum",
+        "HasError": false,
+        "Result": null
+      },
+      {
+        "Name": "day_monday_origin",
+        "HasError": false,
+        "Result": "0"
+      }
+    ],
+    "sql": {
+      "Engine": "v1.5.4",
+      "Transport": "Installed DuckDB Driver via System.Data.Odbc",
+      "Results": [
+        {
+          "Name": "unicode_length",
+          "SQL": "SELECT length('a😀b')",
+          "HasError": false,
+          "Result": 3
+        },
+        {
+          "Name": "middle_overrun",
+          "SQL": "SELECT substr('abcdef', 5, 99)",
+          "HasError": false,
+          "Result": "ef"
+        },
+        {
+          "Name": "range_overrun",
+          "SQL": "SELECT substr('abcdef', 5, 99)",
+          "HasError": false,
+          "Result": "ef"
+        },
+        {
+          "Name": "pad_short_target",
+          "SQL": "SELECT lpad('abcdef', 3, '0')",
+          "HasError": false,
+          "Result": "abc"
+        },
+        {
+          "Name": "trim_whitespace",
+          "SQL": "SELECT trim(chr(9) || ' abc ' || chr(10))",
+          "HasError": false,
+          "Result": "\t abc \n"
+        },
+        {
+          "Name": "round_positive_tie",
+          "SQL": "SELECT round(2.5)",
+          "HasError": false,
+          "Result": 3.0
+        },
+        {
+          "Name": "round_negative_tie",
+          "SQL": "SELECT round(-2.5)",
+          "HasError": false,
+          "Result": -3.0
+        },
+        {
+          "Name": "null_equality",
+          "SQL": "SELECT NULL = NULL",
+          "HasError": false,
+          "Result": null
+        },
+        {
+          "Name": "position_missing",
+          "SQL": "SELECT strpos('abc', 'z')",
+          "HasError": false,
+          "Result": 0
+        },
+        {
+          "Name": "combine_null",
+          "SQL": "SELECT concat_ws('-', 'a', NULL, 'b')",
+          "HasError": false,
+          "Result": "a-b"
+        },
+        {
+          "Name": "empty_sum",
+          "SQL": "SELECT sum(x) FROM (SELECT 1 AS x WHERE false)",
+          "HasError": false,
+          "Result": null
+        },
+        {
+          "Name": "day_monday_origin",
+          "SQL": "SELECT ((extract(dow from DATE '2026-11-09')::INTEGER - 1 + 7) % 7)",
+          "HasError": false,
+          "Result": 0
+        },
+        {
+          "Name": "round_even_positive",
+          "SQL": "SELECT round_even(2.5, 0)",
+          "HasError": false,
+          "Result": 2.0
+        },
+        {
+          "Name": "round_even_negative",
+          "SQL": "SELECT round_even(-2.5, 0)",
+          "HasError": false,
+          "Result": -2.0
+        },
+        {
+          "Name": "safe_null_equality",
+          "SQL": "SELECT NULL IS NOT DISTINCT FROM NULL",
+          "HasError": false,
+          "Result": "true"
+        },
+        {
+          "Name": "safe_pad",
+          "SQL": "SELECT CASE WHEN length('abcdef') >= 3 THEN 'abcdef' ELSE lpad('abcdef', 3, '0') END",
+          "HasError": false,
+          "Result": "abcdef"
+        },
+        {
+          "Name": "safe_range",
+          "SQL": "SELECT CASE WHEN 4 < 0 OR 99 < 0 OR 4 + 99 > length('abcdef') THEN error('M-compatible range guard') ELSE substr('abcdef', 5, 99) END",
+          "HasError": true,
+          "Result": null,
+          "ErrorType": "System.Management.Automation.MethodInvocationException"
+        }
+      ]
+    },
+    "limitation": "These are independent constant-expression evaluations and direct SQL probes, not generated-SQL or folding tests. SQL errors are not proven equivalent to M per-cell error records."
+  }
+}

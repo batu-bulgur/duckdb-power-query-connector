@@ -10,6 +10,12 @@
     <MezContent Include="DuckDB.pq" />
     <MezContent Include="Diagnostics.pqm" />
     <MezContent Include="OdbcConstants.pqm" />
+    <MezContent Include="RelationalFolding.pqm" />
+    <MezContent Include="AdvancedScalar.pqm" />
+    <MezContent Include="RoundScalar.pqm" />
+    <MezContent Include="EqualityScalar.pqm" />
+    <MezContent Include="OrdinalIgnoreCase.pqm" />
+    <MezContent Include="IndexSql.pqm" />
     <MezContent Include="duckdb-logo-16.png" />
     <MezContent Include="duckdb-logo-20.png" />
     <MezContent Include="duckdb-logo-24.png" />

@@ -17,7 +17,9 @@ not permission to alter endpoint policies or install a machine-wide driver.
 ./tools/dev.ps1 build         # MakePQX compile, PQTest info, archive/source hashes
 ./tools/dev.ps1 test          # Upstream functional, schema and comparer baselines
 ./tools/dev.ps1 test-folding  # Results + strict folding + SQL/ODBC row contracts
-./tools/dev.ps1 verify        # Build, runner checks, both suites, negative controls
+./tools/dev.ps1 test-parity   # Pure M references, then matching scalar folding cases
+./tools/dev.ps1 verify        # Build, runner, functional, M-reference, folding, negatives
+./tools/dev.ps1 verify -Parallel # Same complete suite in six isolated test processes
 ```
 
 Commands exit nonzero on failure. `test` and `test-folding` build from current
@@ -25,6 +27,7 @@ source by default. To verify an already-built artifact or isolate a regression:
 
 ```powershell
 ./tools/dev.ps1 test-folding -Connector ./bin/AnyCPU/Debug/DuckDB.mez -Case skip_take
+./tools/dev.ps1 test-parity -Case 'parity_round*'
 ```
 
 The SDK is installed under `.agent/tools/sdk/2.155.2`, pinned to upstream CI's
@@ -118,14 +121,28 @@ transfer at most three rows. Separate cases compose it with grouped COUNT and
 LIMIT/OFFSET. New baselines were hand-selected and checked through independent
 ODBC `suffix(...)` queries, rather than generated from the connector's output.
 
+The [scalar parity suite](scalar-parity.md) extends the initial EndsWith visitor
+to thirteen candidates in explicitly bounded argument/value domains. It adds
+source-free M references, UTF-16 text handling, padding without truncation,
+M whitespace, decimal rounding, and logical projection/filter transport. These
+are scoped mappings, not universal overload parity; the matrix and index work
+are documented there.
+
 `verify` also tests the runner against exit-zero/failed-JSON, missing diagnostics,
-incorrect query identifiers, missing SQL, forbidden escapes, and excessive row counts. Two real
-negative controls return correct data but must be rejected by the folding guard:
-`Table.AddIndexColumn` followed by `FirstN`, and filtering an upstream
-`Value.NativeQuery(..., [EnableFolding=true])` result. The latter remains an
-upstream limitation: its `Odbc.Query` handler ignores subsequent folding.
-Expected rejection of these controls verifies the guard; it does not claim those
-operations have gained folding support.
+incorrect query identifiers, missing SQL, forbidden escapes and excessive row
+counts. Current negatives cover native-query transforms, SDK-inaccessible
+row-dependent structural equality and opaque culture comparers. Each must return
+the correct M result before its folding claim is rejected. Indexing, lone UTF-16
+surrogates and the expanded Round domains now have positive measured coverage;
+their former negative cases are historical, not current limitations.
+
+`verify -Parallel` checks one immutable, source-matched package with independent
+functional and reference/control processes plus four folding partitions. The
+partitions select sorted case positions modulo four; the coordinator rejects
+missing, duplicate or unexpected completed case names and rechecks package hashes.
+Every partition must finish successfully. Logs and completion evidence live in
+`.agent/verification/`; no baseline is regenerated. The default sequential
+`verify` remains available and runs the same suites.
 
 Known limitations are explicitly outside the supported folding suite. To make a
 known unsupported query fail the normal test command (exit 1), run:
@@ -140,8 +157,8 @@ into passing folding expectations.
 
 ## Contribution boundaries and host integration
 
-Runtime changes comprise `LimitOffset`, `SupportsStringLiterals`, the shared
-EndsWith/sample-SD visitor, and a narrow Unicode type-info correction.
+Runtime changes comprise `LimitOffset`, `SupportsStringLiterals`, the relational calculation/index view, the scoped
+[scalar visitor](scalar-parity.md), and a narrow Unicode type-info correction.
 The driver reports both SQL_VARCHAR and SQL_WVARCHAR
 as `VARCHAR`; the Unicode row is renamed to DuckDB's `NVARCHAR` alias and an
 additive implicit conversion lets it compare to UTF-8 `VARCHAR` columns. This
@@ -151,12 +168,13 @@ independent of local paths and business data.
 The ODBC architecture and string-function escape suppression from upstream PR #72
 remain in place. Review the reproduction evidence in `upstream-review.md`.
 
-`Text.EndsWith` with the default comparer uses a narrowly registered ODBC
+The initial `Text.EndsWith` fix with the default comparer used a narrowly registered ODBC
 `AstVisitor` invocation handler to emit native `right(column, length(suffix)) =
 suffix`. It delegates argument translation and quoting to the existing engine;
-no navigation wrapper or SQL text rewriter is added. `SQL_STRING_FUNCTIONS=0`
-stays intact. Explicit comparer overloads are left to M, with a functional
-regression protecting `Comparer.OrdinalIgnoreCase` semantics.
+that initial change added no navigation wrapper or SQL text rewriter. `SQL_STRING_FUNCTIONS=0`
+stays intact. The subsequent relational parity path also maps explicit Ordinal
+and OrdinalIgnoreCase comparers; see `scalar-parity.md` for its measured domain
+and the separate opaque culture-comparer boundary.
 
 `AstVisitor` is documented, but its `Functions`/`Invocation` members and SQL AST
 record shape are not described by the public ODBC parameter reference. This

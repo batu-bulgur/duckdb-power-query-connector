@@ -1,0 +1,1 @@
+#table(type table[n=number,ix=number,ix2=number],{{0,0,10},{1,1,8},{2,2,6}})

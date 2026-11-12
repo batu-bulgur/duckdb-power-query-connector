@@ -1,0 +1,1 @@
+#table(type table [id=number,value=nullable logical], {{1,true},{2,false},{3,null},{4,true},{5,null},{6,true},{7,true},{8,true},{9,false},{10,false},{11,false},{12,true}})

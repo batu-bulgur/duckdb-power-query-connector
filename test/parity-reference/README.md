@@ -1,0 +1,1 @@
+These pure M queries use inline synthetic records, without ODBC or the connector. Their independently specified expected tables match the folding regressions. They are compared by tools/dev.ps1 verify; no test command generates or updates baselines.

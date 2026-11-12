@@ -1,5 +1,5 @@
 // This file contains your Data Connector logic
-[Version = "0.3.0"]
+[Version = "0.4.0"]
 section DuckDB;
 
 // When set to true, additional trace information will be written out to the User log.
@@ -162,79 +162,15 @@ shared DuckDB.Contents = (
         Options = [
                 // A logical (true/false) that sets whether to view the tables grouped by their schema names
                 HierarchicalNavigation = false,
+                // Keep SQL quoting/parameters and the relational planner in the
+                // existing engine. Only registered scalar invocations are replaced.
+                AstVisitor = DuckDB.ScalarAstVisitor,
                 // Allows upconversion of numeric types
                 SoftNumbers = true,
                 // Allow upconversion / resizing of numeric and string types
                 TolerateConcatOverflow = true,
                 // Enables connection pooling via the system ODBC manager
                 ClientConnectionPooling = false,
-                // A single visitor preserves both the native scalar suffix
-                // mapping and the numeric sample-standard-deviation aggregate.
-                AstVisitor = [
-                    Functions = {Text.EndsWith, List.StandardDeviation},
-                    Invocation = (visitor, rowType, groupKeys, ast) =>
-                        if ast[Function][Value] = List.StandardDeviation then
-                            let
-                                args = ast[Arguments],
-                                column =
-                                    if groupKeys <> null and List.Count(args) = 1
-                                        and args{0}[Kind] = "FieldAccess"
-                                        and args{0}[Expression] = RowExpression.Row then
-                                        visitor(args{0})
-                                    else
-                                        error "Only direct numeric column aggregates support standard deviation folding.",
-                                call = (name) => [
-                                    Kind = "Invocation",
-                                    Function = [Kind = "Function", Name = name],
-                                    Arguments = { [Expression = column, Type = null] }
-                                ]
-                            in
-                                if not Type.Is(Type.NonNullable(column[Type]), type number) then
-                                    error "Only numeric columns support standard deviation folding."
-                                else [
-                                    // M ignores nulls and returns 0 for one non-null
-                                    // value; DuckDB STDDEV_SAMP returns NULL for it.
-                                    // Keep empty/all-null inputs NULL in both engines.
-                                    Kind = "Case",
-                                    Case = call("COUNT"),
-                                    Conditions = { [
-                                        When = [Kind = "Literal", Value = "1"],
-                                        Then = [Kind = "Literal", Value = "0"]
-                                    ] },
-                                    Else = call("STDDEV_SAMP"),
-                                    Type = Double.Type
-                                ]
-                        else if ast[Function][Value] = Text.EndsWith then
-                            if List.Count(ast[Arguments]) <> 2 then
-                                error Error.Record("Expression.Error", "EndsWith folding requires the default comparer.")
-                            else
-                                let
-                                    column = visitor(ast[Arguments]{0}),
-                                    suffix = visitor(ast[Arguments]{1}),
-                                    // Let the engine quote literals/identifiers. Use
-                                    // DuckDB LENGTH, including for Unicode suffixes.
-                                    length = [
-                                        Kind = "Invocation",
-                                        Function = [Kind = "Function", Name = "length"],
-                                        Arguments = {[Expression = suffix, Type = type nullable text]}
-                                    ]
-                                in
-                                    [
-                                        Kind = "BinaryLogicalOperation",
-                                        Operator = "Equals",
-                                        Left = [
-                                            Kind = "Invocation",
-                                            Function = [Kind = "Function", Name = "right"],
-                                            Arguments = {
-                                                [Expression = column, Type = type nullable text],
-                                                [Expression = length, Type = Int64.Type]
-                                            }
-                                        ],
-                                        Right = suffix
-                                    ]
-                        else
-                            error Error.Record("Expression.Error", "No registered DuckDB function mapping.")
-                ],
                 // DuckDB VARCHAR is UTF-8; comparison to its NVARCHAR alias is
                 // lossless. Add this conversion without replacing driver casts.
                 ImplicitTypeConversions = #table(
@@ -251,8 +187,10 @@ shared DuckDB.Contents = (
             ConnectionString,
             Options
         ),
+        RelationalDatasource = DuckDB.RelationalFolding(ConnectionString, OdbcDatasource, DuckDB.ScalarAstVisitor,
+            (a,t,c,r)=>DuckDB.AdvancedScalar(a,t,c,r,DuckDB.OrdinalIgnoreCase), DuckDB.RoundScalar, DuckDB.EqualityScalar, DuckDB.IndexSql),
         // Value.NativeQuery support. EnableFolding is ignored: transforms evaluate client-side.
-        NativeQueryView = Table.View(OdbcDatasource, [
+        NativeQueryView = Table.View(RelationalDatasource, [
             OnNativeQuery = (query, parameters, queryOptions) =>
                 if parameters <> null then
                     error Error.Record("Expression.Error", "The DuckDB connector does not support native query parameters.")
@@ -261,6 +199,215 @@ shared DuckDB.Contents = (
         ])
     in
         NativeQueryView;
+
+// Conservative native-ODBC scalar adapter. The relational calculation modules
+// provide the expanded mappings; retain safe fallback behavior here. Unsupported
+// argument shapes deliberately decline folding rather than approximate M.
+DuckDB.ScalarAstVisitor = [
+    Functions = {
+        Text.EndsWith, Text.Length, Text.Middle, Text.Range, Text.PositionOf,
+        Text.PadStart, Text.PadEnd, Text.Trim, Text.TrimStart, Text.TrimEnd,
+        Number.Round, Value.Equals, Value.NullableEquals, List.StandardDeviation
+    },
+    Invocation = (visitor, rowType, groupKeys, ast) =>
+        let
+            f = ast[Function][Value],
+            args = ast[Arguments],
+            argc = List.Count(args),
+            Decline = () => error Error.Record("Expression.Error", "This invocation has no equivalent DuckDB folding mapping."),
+            Arg = (i) => visitor(args{i}),
+            Literal = (v) => visitor([Kind = "Constant", Value = v]),
+            // Only validated integral compiler constants use SQL numeric literals.
+            // User text and identifiers always go through the existing visitor.
+            Integer = (v) => [Kind = "Literal", Value = Number.ToText(v, "0", "en-US")],
+            Cast = (value, sqlType) => [Kind = "Cast", Expression = value, Type = sqlType],
+            Constant = (i, fallback) =>
+                if i >= argc then fallback
+                else if args{i}[Kind] = "Constant" then args{i}[Value]
+                else Decline(),
+            Natural = (v) =>
+                if v is number and v >= 0 and v <= 2147483647 and Number.RoundDown(v) = v then v else Decline(),
+            ArgumentType = (i) =>
+                if args{i}[Kind] = "Constant" then Value.Type(args{i}[Value])
+                else if args{i}[Kind] = "FieldAccess" then Record.Field(Type.RecordFields(rowType), args{i}[MemberName])[Type]
+                else Decline(),
+            Primitive = (t) =>
+                if t = type null then "null"
+                else if Type.Is(t, type nullable number) then "number"
+                else if Type.Is(t, type nullable text) then "text"
+                else Decline(),
+            Call = (name, values, types) => [
+                Kind = "Invocation", Function = [Kind = "Function", Name = name],
+                Arguments = List.Transform(List.Positions(values), (i) => [Expression = values{i}, Type = types{i}])
+            ],
+            TextCall = (name, values) => Call(name, values, List.Repeat({type nullable text}, List.Count(values))),
+            Numeric = (name, a, b) => Call(name, {a, b}, {type nullable number, type nullable number}),
+            Compare = (operator, a, b) => [Kind = "BinaryLogicalOperation", Operator = operator, Left = a, Right = b],
+            IsNull = (value) => [Kind = "UnaryLogicalOperation", Operator = "IsNull", Expression = value],
+            And = (a, b) => [Kind = "ConditionOperation", Operator = "And", Left = a, Right = b],
+            Choose = (condition, yes, no) => [
+                Kind = "Case", Case = null,
+                Conditions = {[When = if List.Contains({"BinaryLogicalOperation", "ConditionOperation", "UnaryLogicalOperation"}, condition[Kind]) then condition
+                                      else Compare("Equals", condition, [Kind = "Literal", Value = "TRUE"]), Then = yes]},
+                Else = no
+            ],
+            FailText = () => TextCall("error", {Literal("The requested UTF-16 text range cannot be represented as DuckDB VARCHAR.")}),
+            Supplementary = "[\x{10000}-\x{10FFFF}]",
+            // Add one marker after each supplementary character. Its positions
+            // now count UTF-16 units. An original marker remains distinguishable:
+            // only the marker immediately after a supplementary code point is removed.
+            EncodeUnits = (text) => TextCall("regexp_replace", {text, Literal("(" & Supplementary & ")"), Literal("\1" & Character.FromNumber(1)), Literal("g")}),
+            DecodeUnits = (text) => TextCall("regexp_replace", {text, Literal("(" & Supplementary & ")\x01"), Literal("\1"), Literal("g")}),
+            LengthUnits = (text) => TextCall("length", {EncodeUnits(text)}),
+            Whitespace = List.Combine({{9..13}, {32, 133, 160, 5760}, {8192..8202}, {8232, 8233, 8239, 8287, 12288}}),
+            TrimCharacters = (value) =>
+                let
+                    items = if value = null then List.Transform(Whitespace, Character.FromNumber)
+                            else if value is text then {value}
+                            else if value is list then value else Decline()
+                in
+                    if List.AllTrue(List.Transform(items, each _ is text and Text.Length(_) = 1 and (Character.ToNumber(_) < 55296 or Character.ToNumber(_) > 57343)))
+                    then Text.Combine(items) else Decline(),
+            Result =
+                if f = List.StandardDeviation then
+                    let
+                        column = if groupKeys <> null and argc = 1 and args{0}[Kind] = "FieldAccess"
+                            and args{0}[Expression] = RowExpression.Row then Arg(0) else Decline(),
+                        aggregate = (name) => Call(name, {column}, {null})
+                    in
+                        if not Type.Is(Type.NonNullable(column[Type]), type number) then Decline()
+                        else Choose(Compare("Equals", aggregate("COUNT"), Integer(1)), Integer(0), aggregate("STDDEV_SAMP")) & [Type=Double.Type]
+                else if f = Text.EndsWith then
+                    if argc <> 2 then Decline()
+                    else Compare("Equals", Call("right", {Arg(0), TextCall("length", {Arg(1)})}, {type nullable text, Int64.Type}), Arg(1))
+                else if f = Text.Length then LengthUnits(Arg(0))
+                else if f = Text.Middle or f = Text.Range then
+                    let
+                        offset = Natural(Constant(1, null)),
+                        rawCount = Constant(2, null),
+                        count = if rawCount = null then null else Natural(rawCount),
+                        text = EncodeUnits(Arg(0)),
+                        slice = if count = null then Call("substr", {text, Integer(offset + 1)}, {type nullable text, Int64.Type})
+                                else Call("substr", {text, Integer(offset + 1), Integer(count)}, {type nullable text, Int64.Type, Int64.Type}),
+                        badStart = if offset = 0 or count = 0 then null
+                                   else TextCall("regexp_matches", {Call("substr", {text, Integer(offset), Integer(1)}, {type nullable text, Int64.Type, Int64.Type}), Literal(Supplementary)}),
+                        badEnd = TextCall("regexp_matches", {slice, Literal(Supplementary & "$")}),
+                        checkedEnd = Choose(badEnd, FailText(), DecodeUnits(slice)),
+                        validSlice = if badStart = null then checkedEnd else Choose(badStart, FailText(), checkedEnd),
+                        bounds = offset + (if count = null then 0 else count)
+                    in
+                        if f = Text.Range then Choose(Compare("LessThan", TextCall("length", {text}), Integer(bounds)), FailText(), validSlice)
+                        else validSlice
+                else if f = Text.PositionOf then
+                    if Constant(2, Occurrence.First) <> null and Constant(2, Occurrence.First) <> Occurrence.First or argc > 3 then Decline()
+                    else
+                        let
+                            position = TextCall("strpos", {Arg(0), Arg(1)}),
+                            prefix = Call("substr", {Arg(0), Integer(1), Numeric("subtract", position, Integer(1))}, {type text, Int64.Type, Int64.Type}),
+                            found = Choose(Compare("Equals", position, Integer(0)), Integer(-1), LengthUnits(prefix))
+                        in Choose(IsNull(Arg(0)), FailText(), Choose(IsNull(Arg(1)), FailText(), found))
+                else if f = Text.PadStart or f = Text.PadEnd then
+                    let
+                        count = Natural(Constant(1, null)),
+                        rawPad = Constant(2, null),
+                        pad = if rawPad = null then " " else if rawPad is text then TrimCharacters(rawPad) else Decline(),
+                        validPad = if Text.Length(pad) = 1 then pad else Decline(),
+                        extra = Numeric("greatest", Numeric("subtract", Integer(count), LengthUnits(Arg(0))), Integer(0)),
+                        target = Numeric("add", TextCall("length", {Arg(0)}), extra)
+                    in
+                        Call(if f = Text.PadStart then "lpad" else "rpad", {Arg(0), Cast(target, "INTEGER"), Literal(validPad)}, {type nullable text, Int64.Type, type text})
+                else if f = Text.Trim or f = Text.TrimStart or f = Text.TrimEnd then
+                    TextCall(if f = Text.Trim then "trim" else if f = Text.TrimStart then "ltrim" else "rtrim", {Arg(0), Literal(TrimCharacters(Constant(1, null)))})
+                else if f = Number.Round then
+                    let
+                        inputType = ArgumentType(0),
+                        facets = if Type.Is(inputType, type nullable number) then Type.Facets(inputType) else Decline(),
+                        binaryDouble = Record.FieldOrDefault(facets, "NumericPrecisionBase", null) = 2 and Record.FieldOrDefault(facets, "NumericPrecision", null) = 53,
+                        whole = Record.FieldOrDefault(facets, "NumericScale", null) = 0,
+                        rawDigits = Constant(1, null),
+                        digits = if rawDigits = null then 0 else rawDigits,
+                        rawMode = Constant(2, null),
+                        mode = if rawMode = null then RoundingMode.ToEven else rawMode,
+                        // M Round first converts binary doubles to System.Decimal
+                        // (15 significant digits). Direct round_even(DOUBLE) does
+                        // not match e.g. 1.015 at two places. DECIMAL(38,28) retains
+                        // .NET's maximum scale, within an explicit magnitude guard.
+                        decimal = Cast(TextCall("printf", {Literal("%.15g"), Arg(0)}), "DECIMAL(38,28)"),
+                        UnitText = (multiplier) =>
+                            if digits = 0 then Text.From(multiplier, "en-US")
+                            else if digits > 0 then "0." & Text.Repeat("0", digits - 1) & Text.From(multiplier, "en-US")
+                            else Text.From(multiplier, "en-US") & Text.Repeat("0", -digits),
+                        DecimalLiteral = (text) => Cast([Kind = "Literal", Value = text], "DECIMAL(38,28)"),
+                        unit = DecimalLiteral(UnitText(1)),
+                        twoUnits = DecimalLiteral(UnitText(2)),
+                        half = DecimalLiteral(if digits >= 0 then "0." & Text.Repeat("0", digits) & "5" else "5" & Text.Repeat("0", -digits - 1)),
+                        // ROUND changes DECIMAL's declared scale. Restore it
+                        // before MOD/arithmetic to prevent mixed-scale promotion
+                        // back to floating point (1.02 % 0.02 must be exactly zero).
+                        away = Cast(Call("round", {decimal, Integer(digits)}, {type nullable number, Int64.Type}), "DECIMAL(38,28)"),
+                        tie = Compare("Equals", Call("abs", {Numeric("mod", decimal, unit)}, {type number}), half),
+                        odd = Compare("NotEqualTo", Numeric("mod", away, twoUnits), Integer(0)),
+                        toward = Numeric("subtract", away, Numeric("multiply", Call("sign", {decimal}, {type number}), unit)),
+                        tieResult = if mode = RoundingMode.ToEven then Choose(odd, toward, away)
+                                    else if mode = RoundingMode.TowardZero then toward
+                                    else if mode = RoundingMode.Up then Choose(Compare("LessThan", decimal, Integer(0)), Numeric("add", away, unit), away)
+                                    else if mode = RoundingMode.Down then Choose(Compare("GreaterThan", decimal, Integer(0)), Numeric("subtract", away, unit), away)
+                                    else away,
+                        // DuckDB round_even's macro performs a floating-point tie
+                        // check even for DECIMAL. Test the remainder exactly instead.
+                        rounded = Choose(tie, tieResult, away),
+                        magnitude = Call("abs", {Arg(0)}, {type number}),
+                        tooSmall = And(Compare("GreaterThan", magnitude, Integer(0)), Compare("LessThan", magnitude, DecimalLiteral("0.00000000000001"))),
+                        rangeError = TextCall("error", {Literal("Number.Round exceeds the verified decimal folding range.")}),
+                        guarded = Choose(IsNull(Arg(0)), Literal(null),
+                            Choose(Compare("Equals", Call("isfinite", {Arg(0)}, {type number}), [Kind = "Literal", Value = "FALSE"]), Arg(0),
+                                Choose(Compare("GreaterThanOrEqual", magnitude, Integer(1000000000)), rangeError,
+                                    Choose(tooSmall, rangeError, rounded))))
+                    in
+                        if not (digits is number) or digits < -9 or digits > 15 or Number.RoundDown(digits) <> digits then Decline()
+                        else if List.Contains({RoundingMode.Up, RoundingMode.Down, RoundingMode.AwayFromZero, RoundingMode.TowardZero, RoundingMode.ToEven}, mode) then
+                            if whole and digits >= 0 then Arg(0)
+                            else if binaryDouble then guarded
+                            else Decline()
+                        else Decline()
+                else if f = Value.Equals or f = Value.NullableEquals then
+                    if argc > 2 then Decline()
+                    else
+                        let
+                            leftKind = Primitive(ArgumentType(0)),
+                            rightKind = Primitive(ArgumentType(1)),
+                            compatible = leftKind = rightKind or leftKind = "null" or rightKind = "null",
+                            // DuckDB list equality is NULL-safe. Restrict primitive
+                            // kinds to prevent SQL coercion of e.g. number and text.
+                            equal = if not compatible then Decline()
+                                    else if f = Value.NullableEquals then Compare("Equals", Arg(0), Arg(1))
+                                    else Compare("Equals", Call("list_value", {Arg(0)}, {type any}), Call("list_value", {Arg(1)}, {type any})),
+                            NotNaN = (value) => Compare("Equals", Call("isnan", {Numeric("coalesce", value, Integer(0))}, {type number}), [Kind = "Literal", Value = "FALSE"])
+                        in
+                            if leftKind = "number" or rightKind = "number" then And(equal, And(NotNaN(Arg(0)), NotNaN(Arg(1)))) else equal
+                else Decline(),
+            BooleanCase =
+             if f = Text.EndsWith then Choose(IsNull(Arg(1)), FailText(), Choose(IsNull(Arg(0)), Literal(null), Choose(Result, Integer(1), Integer(0))))
+             else if f = Value.Equals then Choose(Result, Integer(1), Integer(0))
+             else if f = Value.NullableEquals then
+                Choose(IsNull(Arg(0)), Literal(null), Choose(IsNull(Arg(1)), Literal(null), Choose(Result, Integer(1), Integer(0))))
+             else null,
+            Output = if BooleanCase = null then Result else [
+                // DuckDB accepts 0/1/NULL as predicates. Keep the AST classified
+                // as a condition to avoid a bound BIT parameter in WHERE, while
+                // projecting INTEGER so the driver does not return BOOLEAN text.
+                Kind = "UnaryLogicalOperation",
+                Operator = [Kind = "Literal", Value = "", IsPrefix = true],
+                Expression = BooleanCase
+            ]
+        in
+            Output & [Type =
+                if f = List.StandardDeviation then Double.Type
+                else if f = Text.Length or f = Text.PositionOf or f = Number.Round then type nullable number
+                else if f = Text.EndsWith or f = Value.NullableEquals then type nullable logical
+                else if f = Value.Equals then type logical
+                else type nullable text]
+];
 
 // Data Source Kind description
 DuckDB = [
@@ -488,6 +635,13 @@ Extension.LoadFunction = (name as text) =>
 
 // Diagnostics module contains multiple functions. We can take the ones we need.
 Diagnostics = Extension.LoadFunction("Diagnostics.pqm");
+
+DuckDB.RelationalFolding = Extension.LoadFunction("RelationalFolding.pqm");
+DuckDB.AdvancedScalar = Extension.LoadFunction("AdvancedScalar.pqm");
+DuckDB.RoundScalar = Extension.LoadFunction("RoundScalar.pqm");
+DuckDB.EqualityScalar = Extension.LoadFunction("EqualityScalar.pqm");
+DuckDB.OrdinalIgnoreCase = Extension.LoadFunction("OrdinalIgnoreCase.pqm");
+DuckDB.IndexSql = Extension.LoadFunction("IndexSql.pqm");
 
 Diagnostics.LogValue = if (EnableTraceOutput) then Diagnostics[LogValue] else (prefix, value) => value;
 

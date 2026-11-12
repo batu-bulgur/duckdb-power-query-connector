@@ -1,0 +1,2 @@
+let data=#table(type table[id=number,label=nullable text,amount=nullable number,large=nullable number],{{1,"😀",#nan,9007199254740993},{2,"",#nan,9007199254740992},{3,"𐐀",-#infinity,null},{4,"B",null,null},{5,"a",1,null},{6,"",-1,null},{7,null,#infinity,null},{8,"İ",9007199254740992,null},{9,"ı",9007199254740992,null},{10,"Ş",0,null},{11,"i",0,null},{12,"I",null,null}}) in
+Table.SelectColumns(Table.AddIndexColumn(Table.Sort(data,{{"label",Order.Ascending}}),"ix"),{"id","ix"})

@@ -3,6 +3,12 @@
 Updated: 2026-11-12. Scope: the existing ODBC connector and its SDK tests. No change
 to installed drivers, DSNs, host trust policy, or the ODBC architecture.
 
+The EndsWith sections below record the initial `de8c503` implementation and its
+measured SQL. The subsequent [scalar and relational parity implementation](scalar-parity.md)
+adds thirteen scalar mappings and an ordered index plan, with explicit value/error
+transport. Its current SQL can therefore differ from the historical direct
+predicate shown here. Current comparer coverage and test evidence are in that document.
+
 ## Unicode equality: fixed
 
 On SDK 2.155.2 with the installed DuckDB ODBC engine 1.5.4, Unicode literal
@@ -182,10 +188,12 @@ Expected baselines were selected by hand and checked with independent
 `SELECT id ... WHERE suffix(label, '...') ORDER BY id` queries through ODBC,
 plus independent COUNT and pagination queries. The suite never regenerates
 baselines. Every folding case asserts native RIGHT/LENGTH equality in WHERE and
-forbids ODBC function escapes. `local_index` and `native_filter` remain genuine
-negative controls, with no stale `text_ends` name in their runner or contracts.
+forbids ODBC function escapes. Index folding was subsequently implemented and
+promoted to positive coverage. Current negative controls cover native-query
+transforms, inaccessible structural constructors and opaque culture comparers;
+see `scalar-parity.md` for the current implementation and evidence.
 
-On 2026-11-12, `./tools/dev.ps1 verify` exited **0**: the MEZ loaded with all
+Historical initial default-comparer receipt (before the expanded parity work): on 2026-11-12, `./tools/dev.ps1 verify` exited **0**: the MEZ loaded with all
 12 source-matched resources, 10 runner must-reject checks passed, all 5
 functional/schema/comparer tests and all 34 folding tests passed, and both
 remaining negative controls were rejected. All 13 EndsWith cases above produced

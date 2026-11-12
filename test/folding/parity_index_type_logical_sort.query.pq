@@ -1,0 +1,1 @@
+let s=DuckDB.Contents("__DB_PATH__",null,true,false,"single",[custom_user_agent="index-type-sort"]),t=s{[Item="smoke"]}[Data] in Table.SelectColumns(Table.FirstN(Table.Sort(Table.AddIndexColumn(t,"i",1,1,type logical),{{"i",Order.Descending}}),3),{"n"})

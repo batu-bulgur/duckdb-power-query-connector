@@ -1,0 +1,86 @@
+// SQL values retain UTF-16 units and an error channel until the ODBC boundary.
+// Decoding that transport does not evaluate the original M transformation.
+(ast, rowType, compile, render, ordinalCaseMap as text) as record =>
+let
+    f=ast[Function][Value], a=ast[Arguments], argc=List.Count(a),
+    N=(s, optional encoding, optional err)=>[Kind="Literal",Value=s,Encoding=if encoding=null then "normal" else encoding,Type=if encoding="utf16" then type nullable text else if encoding="list" then type list else if encoding="json" then type any else if f=Text.EndsWith then type nullable logical else type nullable number,ErrorSql=if err=null then "NULL" else err,Transport=true],
+    S=(v)=>"'" & Text.Replace(v,"'","''") & "'",
+    C=(i,default)=>if i>=argc then default else if a{i}[Kind]="Constant" then a{i}[Value] else error "A static comparer/occurrence is required.",
+    A=(i)=>compile(a{i}), V=(i)=>if Record.FieldOrDefault(A(i),"Encoding",null)="number" then "CAST(" & render(A(i)) & " AS DOUBLE)" else render(A(i)),
+    E=(i)=>if a{i}[Kind]="Constant" then "NULL" else Record.FieldOrDefault(A(i),"ErrorSql","NULL"),
+    NullArg=(i)=>i>=argc or (a{i}[Kind]="Constant" and a{i}[Value]=null),
+    Inherited=Text.Combine(List.Transform(List.Positions(a),each E(_)),", "),
+    Err=(condition,message,optional detail,optional kind)=>"CASE WHEN " & condition & " THEN CAST(to_json(struct_pack(m := " & S(message) & ", d := " & (if detail=null then "NULL" else detail) & ", k := " & (if kind=null then "NULL" else if kind is record then kind[Sql] else S(kind)) & ")) AS VARCHAR) ELSE NULL END",
+    DetailKind=(i)=>if a{i}[Kind]="Constant" then
+            (try if Value.Equals(a{i}[Value],Number.FromText(Number.ToText(a{i}[Value],"R","en-US"),"en-US"),Precision.Decimal) then "number" else "double" otherwise "double")
+        else [Sql="CASE WHEN " & Record.FieldOrDefault(A(i),"NumericKindSql","'double'") & "='double' THEN 'double' ELSE 'number' END"],
+    UnitJson=(sql)=>"chr(34)||coalesce(array_to_string(list_transform(" & sql & ", x -> '\u'||lpad(to_hex(x),4,'0')),''),'')||chr(34)",
+    Errors=(extra)=>"coalesce(" & Inherited & ", " & extra & ")",
+    CodeUnit=(c)=>try Character.ToNumber(c) otherwise
+        let bytes=Binary.ToList(Binary.FromText(Text.Range(Text.FromBinary(Json.FromValue(c)),3,4),BinaryEncoding.Hex)) in bytes{0}*256+bytes{1},
+    UnitLiteral=(t)=>"[" & Text.Combine(List.Transform(Text.ToList(t),each Number.ToText(CodeUnit(_),"0","en-US")),",") & "]::BIGINT[]",
+    U=(i)=>if a{i}[Kind]="Constant" and a{i}[Value] is text then UnitLiteral(a{i}[Value])
+        else if Record.FieldOrDefault(A(i),"Encoding",null)="utf16" then V(i)
+        else "CASE WHEN " & V(i) & " IS NULL THEN NULL ELSE flatten(list_transform(list_filter(string_split(" & V(i) & ", ''),c -> c<>''), c -> CASE WHEN unicode(c)>65535 THEN [55296+((unicode(c)-65536)//1024),56320+((unicode(c)-65536)%1024)] ELSE [unicode(c)] END)) END",
+    // Keep repeated expressions behind aliases; this also makes nested calls tractable.
+    TextInput="SELECT " & U(0) & " AS t",
+    IntError=(sql,index)=>
+        let node=A(index),encoded=Record.FieldOrDefault(node,"Encoding",null)="number",raw=Record.FieldOrDefault(node,"RawValueSql",render(node)),
+            check=if encoded then "CASE WHEN " & Record.FieldOrDefault(node,"NumericKindSql","'double'") & "='decimal' THEN TRY_CAST(" & raw & " AS DECIMAL(38,28)) ELSE NULL END" else sql,
+            ordinary="NOT isfinite(" & sql & ") OR " & sql & " <> trunc(" & sql & ") OR " & sql & " < -2147483648 OR " & sql & " > 2147483647",
+            invalid=if encoded then "CASE WHEN " & Record.FieldOrDefault(node,"NumericKindSql","'double'") & "='decimal' THEN " & check & " IS NULL OR " & check & "<>trunc(" & check & ") OR " & check & " < -2147483648 OR " & check & " > 2147483647 ELSE " & ordinary & " END" else ordinary
+        in "coalesce(" & Err(sql & " IS NULL","We cannot convert the value null to type Number.",null,"null-number") & "," & Err(invalid,"The number is out of range of a 32 bit integer value.",if encoded then raw else "CAST(" & sql & " AS VARCHAR)",DetailKind(index)) & ")",
+    Whitespace="[9,10,11,12,13,32,133,160,5760,8192,8193,8194,8195,8196,8197,8198,8199,8200,8201,8202,8232,8233,8239,8287,12288]::BIGINT[]",
+    result=
+    if f=Text.Length then N("(SELECT len(t) FROM (" & TextInput & ") AS m)","normal",Errors("NULL"))
+    else if f=Text.Middle or f=Text.Range then
+        let offset=V(1),count=if argc<3 then "NULL" else V(2),
+            inputs="SELECT t, " & offset & " AS o, " & count & " AS n FROM (" & TextInput & ") AS m",
+            countType=if NullArg(2) then "NULL" else "CASE WHEN n IS NULL THEN NULL ELSE " & IntError("n",2) & " END",
+            startBounds=Err("o<0" & (if f=Text.Range then " OR o>len(t)" else ""),"The '" & (if f=Text.Range then "offset" else "start") & "' argument is out of range.","CAST(o AS VARCHAR)",DetailKind(1)),
+            countBounds=Err("n<0" & (if f=Text.Range then " OR o+n>len(t)" else ""),"The 'count' argument is out of range.","CAST(n AS VARCHAR)",if argc>2 then DetailKind(2) else "number"),
+            checks=if f=Text.Middle then {IntError("o",1),countType,startBounds,countBounds} else {IntError("o",1),startBounds,countType,countBounds},
+            err="coalesce(" & Err("o IS NULL","We cannot convert the value null to type Number.",null,"null-number") & ", CASE WHEN t IS NULL THEN NULL ELSE coalesce(" & Text.Combine(checks,",") & ") END)",
+            value="CASE WHEN t IS NULL OR " & err & " IS NOT NULL THEN NULL " &
+                (if f=Text.Middle then "WHEN o>0 AND o<=len(t) AND o+n>2147483647 THEN error('Power Query Text.Middle throws an uncatchable CLR length exception for this offset and count.') " else "") &
+                "ELSE list_slice(t, TRY_CAST(o AS BIGINT)+1, CASE WHEN n IS NULL THEN len(t) ELSE TRY_CAST(o+n AS BIGINT) END) END"
+        in N("(SELECT " & value & " FROM (" & inputs & ") AS m)","utf16",Errors("(SELECT " & err & " FROM (" & inputs & ") AS m)"))
+    else if f=Text.PadStart or f=Text.PadEnd then
+        let pad=if NullArg(2) then "[32]::BIGINT[]" else "coalesce(" & U(2) & ",[32]::BIGINT[])",
+            inputs="SELECT t, " & V(1) & " AS n, " & pad & " AS p FROM (" & TextInput & ") AS m",
+            err="coalesce(" & Err("n IS NULL","We cannot convert the value null to type Number.",null,"null-number") & ", CASE WHEN t IS NULL THEN NULL ELSE coalesce(" & IntError("n",1) & ", " & Err("n<0","The 'count' argument is out of range.","CAST(n AS VARCHAR)",DetailKind(1)) & ", " & Err("len(p)<>1","The value isn't a single-character string.",UnitJson("p"),"value-utf16") & ") END)",
+            extra="list_resize([]::BIGINT[], CAST(greatest(n-len(t),0) AS BIGINT), p[1])",
+            value="CASE WHEN t IS NULL OR " & err & " IS NOT NULL THEN NULL ELSE list_concat(" & (if f=Text.PadStart then extra & ",t" else "t," & extra) & ") END"
+        in N("(SELECT " & value & " FROM (" & inputs & ") AS m)","utf16",Errors("(SELECT " & err & " FROM (" & inputs & ") AS m)"))
+    else if f=Text.Trim or f=Text.TrimStart or f=Text.TrimEnd then
+        let dynamic=argc>1 and a{1}[Kind]<>"Constant",raw=if dynamic then null else C(1,null), items=if raw=null then null else if raw is list then raw else {raw},
+            valid=items=null or List.AllTrue(List.Transform(items,each _ is text and Text.Length(_)=1)),
+            chars=if dynamic then "coalesce(" & U(1) & "," & Whitespace & ")" else if items=null then Whitespace else if valid then UnitLiteral(Text.Combine(items)) else "[]::BIGINT[]",
+            inputs="SELECT t, " & chars & " AS p FROM (" & TextInput & ") AS m",
+            bounds="SELECT *, coalesce(list_first(list_filter(range(1,len(t)+1),i -> NOT list_contains(p,t[i]))),len(t)+1) AS lo, coalesce(list_last(list_filter(range(1,len(t)+1),i -> NOT list_contains(p,t[i]))),0) AS hi FROM (" & inputs & ") AS m",
+            value="CASE WHEN t IS NULL THEN NULL ELSE list_slice(t," & (if f=Text.TrimEnd then "1" else "lo") & "," & (if f=Text.TrimStart then "len(t)" else "hi") & ") END",
+            err=if dynamic then "(SELECT " & Err("t IS NOT NULL AND " & U(1) & " IS NOT NULL AND len(p)<>1","The value isn't a single-character string.",UnitJson("p"),"value-utf16") & " FROM (" & inputs & ") AS m)" else if valid then "NULL" else
+                "(SELECT " & Err("t IS NOT NULL","The value isn't a single-character string.",S(Text.FromBinary(Json.FromValue([Value=List.First(List.Select(items,each not (_ is text and Text.Length(_)=1)))]))),"json") & " FROM (" & inputs & ") AS m)"
+        in if items<>null and not List.AllTrue(List.Transform(items,each _ is text)) then error "M must validate the constant trim argument type."
+           else N("(SELECT " & value & " FROM (" & bounds & ") AS m)","utf16",Errors(err))
+    else if f=Text.PositionOf or f=Text.EndsWith then
+        let dynamic=f=Text.PositionOf and argc>2 and a{2}[Kind]<>"Constant",occurrence=if dynamic then Occurrence.All else if f=Text.EndsWith then Occurrence.First else C(2,Occurrence.First),
+            comparer=if f=Text.EndsWith then C(2,null) else C(3,null),
+            supported=comparer=null or comparer=Comparer.Ordinal or comparer=Comparer.OrdinalIgnoreCase,
+            Fold=(s)=>if comparer=Comparer.OrdinalIgnoreCase then "list_transform(" & s & ",c -> coalesce(map_extract_value(" & ordinalCaseMap & ",c),c))" else s,
+            inputs="SELECT " & Fold("t") & " AS t, " & Fold(U(1)) & " AS p FROM (" & TextInput & ") AS m",
+            candidates="list_filter(range(0, CASE WHEN len(p)=0 THEN len(t) ELSE greatest(len(t)-len(p)+1,0) END), i -> list_slice(t,i+1,i+len(p))=p)",
+            matches="SELECT *, " & candidates & " AS hits" & (if dynamic then ", coalesce(" & V(2) & ",0) AS occurrence" else "") & " FROM (" & inputs & ") AS m",
+            all="list_reduce(list_transform(hits,i->[i]), (acc,v)->CASE WHEN len(acc)=0 OR v[1]>=list_last(acc)+len(p) THEN list_concat(acc,v) ELSE acc END, []::BIGINT[])",
+            allOccurrence=occurrence<>null and occurrence<>Occurrence.First and occurrence<>Occurrence.Last,
+            value=if f=Text.EndsWith then "CASE WHEN t IS NULL THEN NULL WHEN len(p)=0 THEN 1 WHEN list_slice(t,len(t)-len(p)+1,len(t))=p AND len(p)<=len(t) THEN 1 ELSE 0 END"
+                  else if dynamic then "CASE WHEN occurrence NOT IN (0,1) THEN CAST(to_json(" & all & ") AS VARCHAR) WHEN occurrence=1 THEN CAST(to_json(CASE WHEN len(p)=0 THEN greatest(len(t)-1,0) ELSE coalesce(list_last(hits),-1) END) AS VARCHAR) ELSE CAST(to_json(CASE WHEN len(p)=0 THEN 0 ELSE coalesce(list_first(hits),-1) END) AS VARCHAR) END"
+                  else if allOccurrence then all
+                  else if occurrence=Occurrence.First or occurrence=null then "CASE WHEN len(p)=0 THEN 0 ELSE coalesce(list_first(hits),-1) END"
+                  else if occurrence=Occurrence.Last then "CASE WHEN len(p)=0 THEN greatest(len(t)-1,0) ELSE coalesce(list_last(hits),-1) END"
+                  else error "Invalid occurrence.",
+            err=Err((if f=Text.EndsWith then "p IS NULL" else "t IS NULL OR p IS NULL"),"We cannot convert the value null to type Text.",null,"null-text")
+        in if not supported then error "This comparer requires an M-compatible collation implementation."
+           else N("(SELECT " & value & " FROM (" & matches & ") AS m)",if dynamic then "json" else if allOccurrence and f=Text.PositionOf then "list" else if f=Text.EndsWith then "logical" else "normal",Errors("(SELECT " & err & " FROM (" & inputs & ") AS m)"))
+    else error "No advanced scalar mapping."
+in result

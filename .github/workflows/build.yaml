@@ -54,7 +54,7 @@ jobs:
   smoke-test:
     needs: build
     runs-on: windows-2025
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v6
 
@@ -97,7 +97,7 @@ jobs:
           # Seed through the same ODBC engine instead of downloading a separate CLI.
           # Test source files stay untouched; substituted queries live under .agent.
           ./tools/Test-Version.ps1 -Connector ./duckdb-power-query-connector.mez
-          ./tools/dev.ps1 verify -Connector ./duckdb-power-query-connector.mez
+          ./tools/dev.ps1 verify -Parallel -Connector ./duckdb-power-query-connector.mez
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Preserve synthetic test evidence
@@ -110,5 +110,9 @@ jobs:
             .agent/test/**/*.json
             .agent/test/**/*.odbc.diagnostics
             .agent/negative-controls/**/*.json
+            .agent/parity-reference/**/*.json
+            .agent/native-boundaries/**/*.json
+            .agent/verification/**/*.log
+            .agent/verification/**/summary.json
           if-no-files-found: ignore
           include-hidden-files: true

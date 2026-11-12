@@ -1,0 +1,2 @@
+let data=#table(type table[id=number,a=nullable number,b=nullable number,event_date=nullable date,event_time=nullable time,amount=nullable number],{{1,9007199254740992,9007199254740993,#date(2026,1,1),#time(12,34,56.123456),1.015},{2,0,0,null,null,-12.345},{3,null,null,#date(2026,1,3),#time(0,0,0),null}}) in
+Table.Sort(Table.SelectColumns(Table.AddColumn(data,"value",each Number.Round([amount],2),type nullable number),{"id","value"}),{{"id",Order.Ascending}})

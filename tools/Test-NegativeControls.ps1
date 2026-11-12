@@ -6,7 +6,8 @@ $run=Join-Path $repo ('.agent/negative-controls/'+[guid]::NewGuid().ToString('N'
 [void](New-Item -ItemType Directory -Path $run -Force)
 $fixture=& (Join-Path $PSScriptRoot 'Seed-Fixture.ps1') -DatabasePath (Join-Path $run 'fixture.db')
 $credentials=Join-Path $run 'credentials'
-foreach($name in @('local_index','native_filter')) {
+$contracts=@(Get-Content (Join-Path $repo 'test/negative/contracts.json') -Raw | ConvertFrom-Json)
+foreach($name in $contracts.name) {
     $source=Join-Path $repo "test/negative/$name.query.pq"
     $query=Join-Path $run "$name.query.pq"
     (Get-Content $source -Raw).Replace('__DB_PATH__',$fixture.Database.Replace('"','""')) | Set-Content $query -Encoding utf8
@@ -19,15 +20,18 @@ foreach($name in @('local_index','native_filter')) {
     $diagnostics=Join-Path $run "$name-diagnostics"
     [void](New-Item -ItemType Directory -Path $diagnostics)
     $arguments=@('compare','-e',$Connector,'-q',$query,'-cfp',$credentials,'-fomof','-dfp',$diagnostics)
-    $arguments+='-foff'
+    # Ordinary evaluation also verifies the exact lone-surrogate M result.
+    # Its deliberately failing SQL guard must be rejected as fallback.
+    if($name -eq 'native_filter') { $arguments+='-foff' }
     $raw=& $PqTest @arguments
     $nativeExit=$LASTEXITCODE
     $raw | Set-Content (Join-Path $run "$name.json")
     $result=@(($raw -join "`n")|ConvertFrom-Json)
     # These return correct data and exit zero. Only actual SQL/row evidence detects fallback.
     Assert-PqTestResult $result -ExitCode $nativeExit
-    $patterns=if($name -eq 'local_index') {@('limit 3')} else {@('where','limit 3')}
-    $contract=[pscustomobject]@{name=$name;sqlPatterns=$patterns;maxRows=3}
+    $matching=@($contracts|Where-Object name -eq $name)
+    if($matching.Count -ne 1){throw "Missing/duplicate negative contract: $name"}
+    $contract=$matching[0]
     $rejected=$false
     try { Assert-FoldingEvidence $result[0] $contract | Out-Null } catch { $rejected=$true }
     if(-not $rejected) { throw "Negative control unexpectedly folded: $name. Review and replace the control." }

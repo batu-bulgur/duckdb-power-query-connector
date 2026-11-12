@@ -1,4 +1,4 @@
-// Deliberate local operation: the SQL evidence guard must reject it.
+// Standard indexing now has a measured relational SQL implementation.
 let
     src = DuckDB.Contents("__DB_PATH__", null, true, false, "single", [custom_user_agent="negative-control"]),
     data = src{[Item="smoke"]}[Data],

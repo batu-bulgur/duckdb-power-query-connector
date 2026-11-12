@@ -1,0 +1,70 @@
+// Canonical, type-tagged structural values prevent DuckDB's implicit coercions
+// from equating unlike M values. Numeric precision is selected explicitly.
+(ast,rowType,compile,render,roundScalar) as record =>
+let
+    args=ast[Arguments], nullable=ast[Function][Value]=Value.NullableEquals,
+    precision=if List.Count(args)<3 or (args{2}[Kind]="Constant" and args{2}[Value]=null) then Precision.Double
+              else if args{2}[Kind]="Constant" then args{2}[Value] else null,
+    precisionSql=if precision=null then "coalesce(" & render(compile(args{2})) & ",0)" else Number.ToText(precision,"R","en-US"),
+    decimalSelected="(" & precisionSql & "=1)",
+    S=(t)=>"'" & Text.Replace(t,"'","''") & "'",
+    TypeOf=(a)=>if a[Kind]="Constant" then Value.Type(a[Value])
+                else if a[Kind]="FieldAccess" then Record.FieldOrDefault(compile(a),"Type",Record.Field(Type.RecordFields(rowType),a[MemberName])[Type])
+                else Record.FieldOrDefault(compile(a),"Type",type any),
+    Kind=(t)=>if t=type null then "null" else
+        List.First(List.Select({"number","text","logical","date","datetime","datetimezone","time","duration","binary","list","record"},
+            (k)=>Type.Is(t,Record.Field([number=type nullable number,text=type nullable text,logical=type nullable logical,date=type nullable date,
+                datetime=type nullable datetime,datetimezone=type nullable datetimezone,time=type nullable time,duration=type nullable duration,
+                binary=type nullable binary,list=type nullable list,record=type nullable record],k))),"unknown"),
+    NormalDecimal=(sql)=>"(SELECT CASE WHEN c IN ('0','-0') THEN '0' ELSE rtrim(c,'0')||'e'||CAST(CAST(split_part(v,'e',2) AS INTEGER)+len(c)-len(rtrim(c,'0')) AS VARCHAR) END FROM (SELECT *, split_part(v,'e',1) AS c FROM (SELECT " & sql & " AS v) AS m) AS m)",
+    ConstantDecimal=(v)=>let d=Number.Round(v,29),text=Number.ToText(d,"0.############################","en-US"),parts=Text.Split(text,"."),
+        c=Text.Combine(parts),trimmed=Text.TrimEnd(c,{"0"}),scale=if List.Count(parts)>1 then Text.Length(parts{1}) else 0
+        in S(if d=0 then "0" else trimmed & "e" & Text.From(Text.Length(c)-Text.Length(trimmed)-scale,"en-US")),
+    IntegerKey=(n)=>"CASE WHEN " & decimalSelected & " THEN CASE WHEN " & n & "=0 THEN '0' ELSE CAST(CAST(" & n & " AS BIGINT) AS VARCHAR)||'e0' END ELSE CASE WHEN " & n & "=0 THEN '0' ELSE CAST(CAST(" & n & " AS DOUBLE) AS VARCHAR) END END",
+    ListKey=(sql)=>"coalesce(array_to_string(list_transform(" & sql & ", n -> CAST(length('number:'||" & IntegerKey("n") & ") AS VARCHAR)||':number:'||" & IntegerKey("n") & "),''),'')",
+    SevenDigits=(sql)=>"(SELECT split_part(s,'.',1)||'.'||rpad(split_part(s,'.',2),7,'0') FROM (SELECT CAST(" & sql & " AS VARCHAR) AS s) AS m)",
+    TemporalConstant=(v,k)=>S(if k="date" then Date.ToText(v,[Format="yyyy-MM-dd",Culture="en-US"])
+        else if k="time" then Time.ToText(v,[Format="HH:mm:ss.fffffff",Culture="en-US"])
+        else DateTime.ToText(if k="datetimezone" then DateTimeZone.RemoveZone(DateTimeZone.ToUtc(v)) else v,[Format="yyyy-MM-dd HH:mm:ss.fffffff",Culture="en-US"])),
+    Scalar=(a)=>
+        let node=compile(a),sql=render(node),encoding=Record.FieldOrDefault(node,"Encoding",null),kind=if encoding="list" then "list" else Kind(TypeOf(a)),
+            numeric=if encoding="number" then "CAST(" & sql & " AS DOUBLE)" else sql,
+            decimal=()=>roundScalar([Kind="Invocation",Function=[Kind="Constant",Value=Number.Round],Arguments={a,[Kind="Constant",Value=29]}],rowType,compile,render),
+            decimalKey=()=>if a[Kind]="Constant" then ConstantDecimal(a[Value]) else NormalDecimal(render(decimal())),
+            doubleKey="CASE WHEN " & numeric & "=0 THEN '0' ELSE CAST(CAST(" & numeric & " AS DOUBLE) AS VARCHAR) END",
+            numericKey=if precision=Precision.Double then doubleKey else if precision=Precision.Decimal then decimalKey() else "CASE WHEN " & decimalSelected & " THEN " & decimalKey() & " ELSE " & doubleKey & " END",
+            value=if kind="number" then "CASE WHEN " & bad & " IS NOT NULL THEN '' ELSE " & numericKey & " END"
+                  else if kind="text" and encoding="utf16" then "CAST(" & sql & " AS VARCHAR)"
+                  else if kind="text" then "CAST(flatten(list_transform(list_filter(string_split(" & sql & ",''),c -> c<>''), c -> CASE WHEN unicode(c)>65535 THEN [55296+((unicode(c)-65536)//1024),56320+((unicode(c)-65536)%1024)] ELSE [unicode(c)] END)) AS VARCHAR)"
+                  else if kind="list" and encoding="list" then ListKey(sql)
+                  else if kind="logical" then "CASE WHEN " & sql & " THEN 'true' ELSE 'false' END"
+                  else if List.Contains({"date","datetime","datetimezone","time"},kind) and a[Kind]="Constant" then TemporalConstant(a[Value],kind)
+                  else if List.Contains({"datetime","time"},kind) then SevenDigits(sql)
+                  else if kind="datetimezone" then SevenDigits("timezone('UTC'," & sql & ")")
+                  else "CAST(" & sql & " AS VARCHAR)",
+            bad=if kind="number" then
+                    if precision<>Precision.Double then "CASE WHEN " & decimalSelected & " AND " & sql & " IS NOT NULL AND (NOT isfinite(" & numeric & ") OR (" & Record.FieldOrDefault(node,"NumericKindSql","'double'") & "='double' AND abs(" & numeric & ")>=79228162514264337593543950336) OR (" & Record.FieldOrDefault(node,"NumericKindSql","'double'") & "<>'double' AND abs(" & numeric & ")>79228162514264337593543950335)) THEN CAST(to_json(struct_pack(m := 'The number is out of range of a decimal value.',d := CAST(" & sql & " AS VARCHAR),k := 'double')) AS VARCHAR) ELSE NULL END"
+                    else "NULL" else "NULL",
+            variant="CASE WHEN json_type(" & sql & ")='ARRAY' THEN 'list:'||" & ListKey("from_json(" & sql & ",'[""BIGINT""]')") & " ELSE 'number:'||" & IntegerKey("CAST(json_extract_string(" & sql & ",'$') AS BIGINT)") & " END"
+        in [Sql="CASE WHEN " & sql & " IS NULL THEN 'null' ELSE " & (if encoding="json" then variant else S(kind & ":") & "||" & value) & " END",Null=sql & " IS NULL",
+            NaN=if kind="number" then "coalesce(isnan(" & numeric & "),false)" else "false",SourceError=Record.FieldOrDefault(node,"ErrorSql","NULL"),KindSql=if encoding="json" then "CASE WHEN json_type(" & sql & ")='ARRAY' THEN 'list' ELSE 'number' END" else S(kind),Error="coalesce(" & Record.FieldOrDefault(node,"ErrorSql","NULL") & "," & bad & ")"],
+    Canonical=(a)=>
+        if a[Kind]="Constant" and (a[Value] is list or a[Value] is record) then
+            let v=a[Value], recordValue=v is record,
+                keys=if recordValue then List.Sort(Record.FieldNames(v),Comparer.Ordinal) else List.Positions(v),
+                items=List.Transform(keys,(k)=>@Canonical([Kind="Constant",Value=if recordValue then Record.Field(v,k) else v{k}])),
+                parts=List.Transform(List.Positions(items),(i)=>
+                    (if recordValue then S(Text.From(Text.Length(keys{i})) & ":" & keys{i}) & "||" else "") &
+                    "CAST(length(" & items{i}[Sql] & ") AS VARCHAR)||':'||" & items{i}[Sql])
+            in [Sql= S(if recordValue then "record:" else "list:") & (if List.IsEmpty(parts) then "" else "||" & Text.Combine(parts,"||")),Null="false",
+                NaN=if List.IsEmpty(items) then "false" else "(" & Text.Combine(List.Transform(items,each _[NaN])," OR ") & ")",
+                Error=if List.IsEmpty(items) then "NULL" else "coalesce(" & Text.Combine(List.Transform(items,each _[Error]),",") & ",NULL)",
+                SourceError=if List.IsEmpty(items) then "NULL" else "coalesce(" & Text.Combine(List.Transform(items,each _[SourceError]),",") & ",NULL)",KindSql=S(if recordValue then "record" else "list")]
+        else Scalar(a),
+    left=Canonical(args{0}),right=Canonical(args{1}),
+    equal="(" & left[Sql] & "=" & right[Sql] & ") AND NOT (" & left[NaN] & " OR " & right[NaN] & ")",
+    value="CASE " & (if nullable then "WHEN " & left[Null] & " OR " & right[Null] & " THEN NULL " else "") & "WHEN " & equal & " THEN 1 ELSE 0 END",
+    comparisonError="CASE WHEN " & left[Null] & " OR " & right[Null] & " OR " & left[KindSql] & "<>" & right[KindSql] & " THEN NULL ELSE coalesce(" & left[Error] & "," & right[Error] & ") END",
+    precisionError="CASE WHEN " & precisionSql & " NOT IN (0,1) THEN CAST(to_json(struct_pack(m := " & S("The value for a 'Precision.Type' enumeration was not one of the allowed values: 'Precision.Double, Precision.Decimal'.") & ",d := CAST(" & precisionSql & " AS VARCHAR),k := 'number')) AS VARCHAR) ELSE " & comparisonError & " END",
+    err="coalesce(" & left[SourceError] & "," & right[SourceError] & "," & (if nullable then "CASE WHEN " & left[Null] & " OR " & right[Null] & " THEN NULL ELSE " & precisionError & " END" else precisionError) & ")"
+in [Kind="Literal",Value=value,Type=type nullable logical,Encoding="logical",Transport=true,ErrorSql=err]

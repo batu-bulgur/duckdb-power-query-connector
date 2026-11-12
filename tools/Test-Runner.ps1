@@ -48,6 +48,12 @@ $catalogEvidence=[pscustomobject]@{DiagnosticEvents=[pscustomobject]@{Odbc=@(
 )}}
 $dataContract=[pscustomobject]@{name='catalog-separated';maxRows=3;sqlPatterns=@('limit 3')}
 Assert-FoldingEvidence (Get-CatalogSeparatedEvidence $catalogEvidence -MetadataRows 2) $dataContract|Out-Null
+$catalogEvidence.DiagnosticEvents.Odbc[0].Properties.Command="SELECT column_name,data_type, TIMESTAMP '1970-01-01 00:00:00.123456' AS pq_timestamp, make_timestamp_ns(123456700) AS pq_ns_positive, make_timestamp_ns(-876543300) AS pq_ns_negative FROM duckdb_columns() WHERE table_name='synthetic'"
+Assert-FoldingEvidence (Get-CatalogSeparatedEvidence $catalogEvidence -MetadataRows 2) $dataContract|Out-Null
+$calibratedCatalog=$catalogEvidence.DiagnosticEvents.Odbc[0].Properties.Command
+$catalogEvidence.DiagnosticEvents.Odbc[0].Properties.Command='SELECT column_name,data_type, arbitrary_payload FROM duckdb_columns()'
+Must-Reject 'undeclared catalog projection' {Get-CatalogSeparatedEvidence $catalogEvidence -MetadataRows 2}
+$catalogEvidence.DiagnosticEvents.Odbc[0].Properties.Command=$calibratedCatalog
 $catalogEvidence.DiagnosticEvents.Odbc[1].Properties.RowCount=3
 Must-Reject 'oversized type catalog' {Get-CatalogSeparatedEvidence $catalogEvidence -MetadataRows 2}
 $catalogEvidence.DiagnosticEvents.Odbc[1].Properties.RowCount=2

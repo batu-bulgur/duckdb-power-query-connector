@@ -42,11 +42,12 @@ function Get-CatalogSeparatedEvidence {
     param([Parameter(Mandatory)]$Result,[int]$MetadataRows=16)
     $events=@($Result.DiagnosticEvents.Odbc)
     $starts=@($events|Where-Object EventName -eq QueryStart)
-    $meta=@($starts|Where-Object {$_.Properties.Command -match '^SELECT column_name,data_type FROM duckdb_columns\(\)'})
+    $catalogPattern='^SELECT column_name,data_type(?:, TIMESTAMP ''1970-01-01 00:00:00\.123456'' AS pq_timestamp, make_timestamp_ns\(123456700\) AS pq_ns_positive, make_timestamp_ns\(-876543300\) AS pq_ns_negative)? FROM duckdb_columns\('
+    $meta=@($starts|Where-Object {$_.Properties.Command -match $catalogPattern})
     if($starts.Count -ne 2 -or $meta.Count -ne 1){throw 'Expected one declared type-catalog query and one SQL calculation.'}
     $metaId=$meta[0].Properties.Identifier
     $metaResult=[pscustomobject]@{DiagnosticEvents=[pscustomobject]@{Odbc=@($events|Where-Object {$_.Properties.Identifier -eq $metaId})}}
-    $checked=Assert-FoldingEvidence $metaResult ([pscustomobject]@{name='type-catalog';maxRows=$MetadataRows;sqlPatterns=@('^SELECT column_name,data_type FROM duckdb_columns\(')})
+    $checked=Assert-FoldingEvidence $metaResult ([pscustomobject]@{name='type-catalog';maxRows=$MetadataRows;sqlPatterns=@($catalogPattern)})
     $dataEvents=@($events|Where-Object {$_.Properties.Identifier -ne $metaId}|ForEach-Object {
         if($_.EventName -eq 'QueryFinish'){
             $props=@{};foreach($p in $_.Properties.PSObject.Properties){$props[$p.Name]=$p.Value}

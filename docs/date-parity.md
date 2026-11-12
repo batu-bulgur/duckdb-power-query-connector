@@ -50,13 +50,27 @@ checks the correction with strict folding enabled.
 
 ## Native ODBC input conversion
 
-Parity is against values M actually reads. On the pinned SDK/measured driver,
-BOOLEAN is read as text, TIME loses its fraction, and TIMESTAMP_NS is converted
-to microseconds by truncating the epoch count toward zero. Examples:
+Parity is against values M actually reads. BOOLEAN is read as text and TIME
+loses its fraction. The local ODBC engine v1.5.4 converts TIMESTAMP_NS to
+microseconds by truncating the epoch count toward zero. Examples for that driver:
 
 - BOOLEAN TRUE becomes the M text `"true"`.
 - TIME `12:34:56.123456` becomes `#time(12,34,56)`.
 - NS `.123456700` becomes `.123457` before the Unix epoch and `.123456` after it.
+
+The pinned hosted ODBC 1.4.4.0 exposed a different timestamp conversion: its
+native SQL_C_TYPE_TIMESTAMP fraction contains microseconds in the nanosecond
+field. An unregistered official driver ABI probe reproduced
+`2024-01-31T12:34:56.000123456` for SQL TIMESTAMP `.123456`. The first hosted run
+therefore correctly rejected the original NS mapping: 1,056 of 20,196 paired
+checks differed, although all 162 strict folding cases passed.
+
+The cached catalog query now also returns three fixed synthetic TIMESTAMP/NS
+probes. Their values, as actually received by M, choose the SQL conversion for
+both TIMESTAMP and TIMESTAMP_NS. This measures the connection's behavior rather
+than guessing from a driver/engine version. Known microsecond and legacy fraction
+policies are supported; an unrecognized conversion safely stays in M. The probes
+add columns to the same bounded request, not another request or data-table scan.
 
 Operands mirror those conversions. The old time-equality baseline had assumed
 the SQL TIME fraction survived the driver. Its expected result changes from true
@@ -121,7 +135,7 @@ Installed drivers, DSNs, sessions, locale and trust settings are unchanged.
 `Verify-Change.ps1 -BaseRef origin/main -Connector bin/AnyCPU/Debug/DuckDB.mez`
 selected full scope and completed all six parallel partitions successfully.
 The checked package has 19 source-matched resources and SHA-256
-`AC45D7B9C54D5DB1DA593F5DABB0FD7EBAFEFC81976916C3C671F517333552D9`.
+`3F01237E8550FFAA8A4047347D4CFF52CB4346970CC7C8858E5F3C74010BA83B`.
 
 | Check | Result |
 | --- | --- |
@@ -131,15 +145,15 @@ The checked package has 19 source-matched resources and SHA-256
 | Strict SQL/data-row folding cases | 162 distinct cases passed, including 20 new date cases |
 | Negative controls | 4 correct-result cases rejected as folding successes |
 | Native failure reproducers | 4 expected failures reproduced without ODBC |
-| Evidence-runner rejection controls | 15 passed |
+| Evidence-runner rejection controls | 16 passed |
 | Validation-scope policy cases | 33 passed |
 
 The coordinator rechecked package/source hashes and rejected missing, duplicate
 or unexpected completed folding case names. Local evidence is intentionally
-ignored under `.agent/verification/5c7595bcbf584c429c90e6d1fc1b7cf5/`.
-The functional run is `.agent/test/20261112-124255-3003743f/`, references are in
-`.agent/parity-reference/ce2505463f084239a8cd347c3a04800b/`, negatives in
-`.agent/negative-controls/9e23f073eb5a41e88d102507a5f7b226/`, and native failures
-in `.agent/native-boundaries/b75e2a2658ed459a85dcfcd7a9db57e0/`.
+ignored under `.agent/verification/b0cb1553a6044c208d57ec7b115f8066/`.
+The functional run is `.agent/test/20261112-131649-eef09b2f/`, references are in
+`.agent/parity-reference/71b797b200984e379000256e6fd68ab1/`, negatives in
+`.agent/negative-controls/0359996da3854808acce46b70cb9d421/`, and native failures
+in `.agent/native-boundaries/8a61d752890a47cc941fb0faf09cb36e/`.
 Measured environment: SDK 2.155.2, installed ODBC engine v1.5.4. Hosted CI's
 pinned ODBC 1.4.4.0 is a separate required run, not inferred from this receipt.

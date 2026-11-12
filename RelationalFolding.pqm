@@ -266,10 +266,18 @@ let
             // ODBC exposes TIMESTAMP and TIMESTAMPTZ under the same native type
             // name. One cached catalog read distinguishes the physical type.
             catalog=Record.FieldOrDefault(row,"Catalog",null),schema=Record.FieldOrDefault(row,"Schema",null),
-            metadataSql="SELECT column_name,data_type FROM duckdb_columns() WHERE table_name=" & L(row[Item]) & (if catalog=null or catalog="" then "" else " AND database_name=" & L(catalog)) & (if schema=null or schema="" then "" else " AND schema_name=" & L(schema)),
+            metadataSql="SELECT column_name,data_type, TIMESTAMP '1970-01-01 00:00:00.123456' AS pq_timestamp, make_timestamp_ns(123456700) AS pq_ns_positive, make_timestamp_ns(-876543300) AS pq_ns_negative FROM duckdb_columns() WHERE table_name=" & L(row[Item]) & (if catalog=null or catalog="" then "" else " AND database_name=" & L(catalog)) & (if schema=null or schema="" then "" else " AND schema_name=" & L(schema)),
             nativeColumns=Table.Buffer(Odbc.Query(connection,metadataSql)),
+            // Calibrate the values M actually receives, not a driver version.
+            // ODBC 1.4.4 returns microseconds in the nanosecond fraction field.
+            timestampPolicy=()=>let p=nativeColumns{0},fmt=(v)=>DateTime.ToText(v,[Format="yyyy-MM-ddTHH:mm:ss.fffffff",Culture="en-US"]),
+                ts=fmt(p[pq_timestamp]),pos=fmt(p[pq_ns_positive]),neg=fmt(p[pq_ns_negative]),
+                normal=ts="1970-01-01T00:00:00.1234560" and pos="1970-01-01T00:00:00.1234560" and neg="1969-12-31T23:59:59.1234570",
+                legacyTruncate=ts="1970-01-01T00:00:00.0001234" and pos="1970-01-01T00:00:00.0001234" and neg="1969-12-31T23:59:59.0001234",
+                legacyRound=ts="1970-01-01T00:00:00.0001235" and pos="1970-01-01T00:00:00.0001235" and neg="1969-12-31T23:59:59.0001235"
+                in if normal then "microseconds" else if legacyTruncate then "legacy-truncate" else if legacyRound then "legacy-round" else error Error.Record("DuckDB.NativeTimezone","The native timestamp conversion could not be calibrated safely.",[Timestamp=ts,Positive=pos,Negative=neg]),
             temporalNames=List.Select(ns,each List.Contains({"datetime","datetimezone"},dateScalar[Kind](Record.Field(Fields(typ),_)[Type]))),
-            inferred=Record.FromList(List.Transform(temporalNames,(n)=>let t=Record.Field(Fields(typ),n)[Type] in Value.ReplaceMetadata(t,Value.Metadata(t) & [DuckDBSqlType=()=>let found=try Table.SelectRows(nativeColumns,each [column_name]=n){0}[data_type] in if found[HasError] then error Error.Record("DuckDB.NativeTimezone","The physical timestamp type could not be classified safely.",found[Error]) else found[Value]])),temporalNames)
+            inferred=Record.FromList(List.Transform(temporalNames,(n)=>let t=Record.Field(Fields(typ),n)[Type] in Value.ReplaceMetadata(t,Value.Metadata(t) & [DuckDBTimestampPolicy=timestampPolicy,DuckDBSqlType=()=>let found=try Table.SelectRows(nativeColumns,each [column_name]=n){0}[data_type] in if found[HasError] then error Error.Record("DuckDB.NativeTimezone","The physical timestamp type could not be classified safely.",found[Error]) else found[Value]])),temporalNames)
         in if not (base is table) then base else View([Native=base,Type=typ,Sql=sql,Order=order,RowError=rowError,MayRowError=false,Own=false,Encodings=[],ValueTypes=inferred,Aliases=[]]),
     result=Table.FromRecords(Table.TransformRows(navigation,each _ & [Data=Wrap(_)]),Value.Type(navigation))
 in Value.ReplaceMetadata(result,Value.Metadata(navigation))

@@ -11,10 +11,12 @@ let
     Format=(node,render)=>
         let typ=Record.FieldOrDefault(node,"Type",type any),k=Kind(typ),v=render(node),literal=Record.FieldOrDefault(node,"TemporalLiteral",null),
             lookup=Record.FieldOrDefault(Value.Metadata(typ),"DuckDBSqlType",null),nativeType=if lookup=null then null else lookup(),
+            policyLookup=Record.FieldOrDefault(Value.Metadata(typ),"DuckDBTimestampPolicy",null),policy=if policyLookup=null then "microseconds" else policyLookup(),
             zone="strftime(" & v & ",'%z')",
             nativeTime="CASE WHEN typeof(" & v & ")='TIMESTAMP_NS' THEN make_timestamp(epoch_ns(" & v & ")//1000) ELSE CAST(" & v & " AS TIMESTAMP) END",
             seconds="strftime(" & nativeTime & ",'%Y-%m-%dT%H:%M:%S')",
-            fraction="strftime(" & nativeTime & ",'%f')||'0'"
+            micro="CAST(strftime(" & nativeTime & ",'%f') AS BIGINT)",
+            fraction=if policy="microseconds" then "strftime(" & nativeTime & ",'%f')||'0'" else "lpad(CAST((" & micro & (if policy="legacy-round" then "+50" else "") & ")//100 AS VARCHAR),7,'0')"
         in if List.Contains({"TIMESTAMP WITH TIME ZONE","TIMESTAMPTZ"},nativeType) then error Error.Record("DuckDB.NativeTimezone","The native TIMESTAMPTZ source requires host timezone rules which the ODBC schema does not serialize.")
            else if literal<>null then S(literal) else if List.Contains({"date","datetime","datetimezone"},Record.FieldOrDefault(node,"Encoding",null)) then v
            else if k="date" then "CAST(" & v & " AS VARCHAR)"

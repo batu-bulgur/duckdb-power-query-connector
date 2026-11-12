@@ -166,7 +166,7 @@ function Invoke-RegressionSuite {
                     $metadataRows=0
                     foreach($meta in $metadata){
                         $metaEvents=@($events|Where-Object {$_.Properties.Identifier -eq $meta.Properties.Identifier})
-                        Assert-FoldingEvidence -Result ([pscustomobject]@{DiagnosticEvents=[pscustomobject]@{Odbc=$metaEvents}}) -Contract ([pscustomobject]@{name=$name;maxRows=16;sqlPatterns=@('SELECT column_name,data_type FROM duckdb_columns\(')})|Out-Null
+                        Assert-FoldingEvidence -Result ([pscustomobject]@{DiagnosticEvents=[pscustomobject]@{Odbc=$metaEvents}}) -Contract ([pscustomobject]@{name=$name;maxRows=16;sqlPatterns=@('^SELECT column_name,data_type, TIMESTAMP ''1970-01-01 00:00:00\.123456'' AS pq_timestamp, make_timestamp_ns\(123456700\) AS pq_ns_positive, make_timestamp_ns\(-876543300\) AS pq_ns_negative FROM duckdb_columns\(')})|Out-Null
                         $metadataRows+=@($metaEvents|Where-Object EventName -eq QueryFinish)[0].Properties.RowCount
                     }
                     $folded=@($starts|Where-Object {$_.Properties.Command -match $oracle.pattern})

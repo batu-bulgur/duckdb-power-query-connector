@@ -1,0 +1,1 @@
+#table(type table[prefix=nullable text,count=number],{{null,1},{"",1},{"#(tab)",1},{",",1},{"a",7},{"e",1},{"x",1},{"İ",1},{Json.Document("""\ud83d"""),1},{"#(ffff)",1}})

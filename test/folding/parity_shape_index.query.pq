@@ -1,0 +1,1 @@
+let s=DuckDB.Contents("__DB_PATH__",null,true,false,"single",[custom_user_agent="shape-index"]),t=Table.Sort(Table.SelectRows(s{[Item="gui_text_base"]}[Data],each [id]<=3),{{"id",Order.Descending}}),a=Table.AddColumn(t,"tail",each Text.End([label],1),type nullable text),b=Table.AddIndexColumn(a,"idx",10,2,Int64.Type) in Table.SelectColumns(b,{"id","tail","idx"})

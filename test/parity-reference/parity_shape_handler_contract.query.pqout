@@ -1,0 +1,1 @@
+#table(type table[name=text,handler=logical],{{"start",true},{"constant-list",true},{"field-list-fixed-separator",true},{"field-list-dynamic-separator",false},{"element-constant",false},{"element-dynamic",false}})

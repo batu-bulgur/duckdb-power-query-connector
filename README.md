@@ -232,3 +232,6 @@ On your report, click "Publish".
 10. Done! Now you can click on the URL in the Publishing to Power BI dialog to access the online report.
 
 <img width="400" src="https://github.com/user-attachments/assets/fd43f6d5-9747-4fe3-87e7-59798b89d615">
+
+The [GUI text-shaping group](docs/text-shaping-parity.md) adds UTF-16 extraction,
+replacement, split lists and combining, with measured SDK dispatch boundaries.

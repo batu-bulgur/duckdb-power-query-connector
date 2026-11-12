@@ -3,7 +3,8 @@
 This is the initial research snapshot, dated **2026-11-12**. Later implementation
 and measured boundaries are tracked in [scalar-parity.md](../scalar-parity.md)
 and [first14-status.csv](first14-status.csv). The next GUI date group is tracked in
-[date-parity.md](../date-parity.md) and [gui-date-status.csv](gui-date-status.csv).
+[date-parity.md](../date-parity.md) and [gui-date-status.csv](gui-date-status.csv). The GUI text group is tracked in
+[text-shaping-parity.md](../text-shaping-parity.md) and [gui-text-status.csv](gui-text-status.csv).
 Research-only status and zero-parity
 counts below describe this snapshot, not the later implementation.
 

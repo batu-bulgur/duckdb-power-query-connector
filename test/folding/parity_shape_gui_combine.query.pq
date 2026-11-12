@@ -1,0 +1,1 @@
+let s=DuckDB.Contents("__DB_PATH__",null,true,false,"single",[custom_user_agent="shape-gui-negative"]),t=Table.SelectRows(s{[Item="gui_text_base"]}[Data],each [id]=1),a=Table.CombineColumns(t,{"label","other_label"},Combiner.CombineTextByDelimiter("/",QuoteStyle.None),"merged") in Table.TransformColumnTypes(Table.SelectColumns(a,{"id","merged"}),{{"merged",type text}})

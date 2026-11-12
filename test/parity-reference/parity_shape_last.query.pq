@@ -1,0 +1,1 @@
+let t=#table(type table[id=number,label=nullable text,other_label=nullable text],{{16,"abc--def--","--"}}),a=Table.AddColumn(t,"value",each List.Last(Text.Split([label],"--")),type nullable text) in Table.SelectColumns(a,{"id","value"})

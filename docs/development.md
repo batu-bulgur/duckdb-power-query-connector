@@ -219,3 +219,7 @@ it does not install ODBC or run the unchanged M suites. Hosted runner setup is
 separate from installation procedures for corporate machines. CI records synthetic
 test evidence as an artifact. Local results must be distinguished from an actual
 GitHub Actions run; changing the workflow alone does not verify hosted CI.
+
+The [GUI text-shaping suite](text-shaping-parity.md) uses exact UTF-16/list/error
+transport and checks each final SQL alias in its paired matrices. Shared helpers
+emit Python-style SQL lambdas compatible with the measured 1.4.4/2.0 engines.

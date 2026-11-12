@@ -1,0 +1,1 @@
+#table(type table[id=number,merged=text],{{1,Json.Document("""X\ud83d|B""")}})

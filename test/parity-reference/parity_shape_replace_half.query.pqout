@@ -1,0 +1,1 @@
+#table(type table[id=number,value=nullable text],{{1,Json.Document("""a\u0000\ude00b""")}})

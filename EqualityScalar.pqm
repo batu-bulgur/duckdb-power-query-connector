@@ -21,7 +21,7 @@ let
         c=Text.Combine(parts),trimmed=Text.TrimEnd(c,{"0"}),scale=if List.Count(parts)>1 then Text.Length(parts{1}) else 0
         in S(if d=0 then "0" else trimmed & "e" & Text.From(Text.Length(c)-Text.Length(trimmed)-scale,"en-US")),
     IntegerKey=(n)=>"CASE WHEN " & decimalSelected & " THEN CASE WHEN " & n & "=0 THEN '0' ELSE CAST(CAST(" & n & " AS BIGINT) AS VARCHAR)||'e0' END ELSE CASE WHEN " & n & "=0 THEN '0' ELSE CAST(CAST(" & n & " AS DOUBLE) AS VARCHAR) END END",
-    ListKey=(sql)=>"coalesce(array_to_string(list_transform(" & sql & ", n -> CAST(length('number:'||" & IntegerKey("n") & ") AS VARCHAR)||':number:'||" & IntegerKey("n") & "),''),'')",
+    ListKey=(sql)=>"coalesce(array_to_string(list_transform(" & sql & ", lambda n: CAST(length('number:'||" & IntegerKey("n") & ") AS VARCHAR)||':number:'||" & IntegerKey("n") & "),''),'')",
     SevenDigits=(sql)=>"(SELECT split_part(s,'.',1)||'.'||rpad(split_part(s,'.',2),7,'0') FROM (SELECT CAST(" & sql & " AS VARCHAR) AS s) AS m)",
     TemporalConstant=(v,k)=>S(if k="date" then Date.ToText(v,[Format="yyyy-MM-dd",Culture="en-US"])
         else if k="time" then Time.ToText(v,[Format="HH:mm:ss.fffffff",Culture="en-US"])
@@ -35,7 +35,7 @@ let
             numericKey=if precision=Precision.Double then doubleKey else if precision=Precision.Decimal then decimalKey() else "CASE WHEN " & decimalSelected & " THEN " & decimalKey() & " ELSE " & doubleKey & " END",
             value=if kind="number" then "CASE WHEN " & bad & " IS NOT NULL THEN '' ELSE " & numericKey & " END"
                   else if kind="text" and encoding="utf16" then "CAST(" & sql & " AS VARCHAR)"
-                  else if kind="text" then "CAST(flatten(list_transform(list_filter(string_split(" & sql & ",''),c -> c<>''), c -> CASE WHEN unicode(c)>65535 THEN [55296+((unicode(c)-65536)//1024),56320+((unicode(c)-65536)%1024)] ELSE [unicode(c)] END)) AS VARCHAR)"
+                  else if kind="text" then "CAST(flatten(list_transform(list_filter(string_split(" & sql & ",''),lambda c: c<>''), lambda c: CASE WHEN unicode(c)>65535 THEN [55296+((unicode(c)-65536)//1024),56320+((unicode(c)-65536)%1024)] ELSE [unicode(c)] END)) AS VARCHAR)"
                   else if kind="list" and encoding="list" then ListKey(sql)
                   else if kind="logical" then "CASE WHEN " & sql & " THEN 'true' ELSE 'false' END"
                   else if List.Contains({"date","datetime","datetimezone","time"},kind) and a[Kind]="Constant" then TemporalConstant(a[Value],kind)

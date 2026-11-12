@@ -14,14 +14,14 @@ let
     DetailKind=(i)=>if a{i}[Kind]="Constant" then
             (try if Value.Equals(a{i}[Value],Number.FromText(Number.ToText(a{i}[Value],"R","en-US"),"en-US"),Precision.Decimal) then "number" else "double" otherwise "double")
         else [Sql="CASE WHEN " & Record.FieldOrDefault(A(i),"NumericKindSql","'double'") & "='double' THEN 'double' ELSE 'number' END"],
-    UnitJson=(sql)=>"chr(34)||coalesce(array_to_string(list_transform(" & sql & ", x -> '\u'||lpad(to_hex(x),4,'0')),''),'')||chr(34)",
+    UnitJson=(sql)=>"chr(34)||coalesce(array_to_string(list_transform(" & sql & ", lambda x: '\u'||lpad(to_hex(x),4,'0')),''),'')||chr(34)",
     Errors=(extra)=>"coalesce(" & Inherited & ", " & extra & ")",
     CodeUnit=(c)=>try Character.ToNumber(c) otherwise
         let bytes=Binary.ToList(Binary.FromText(Text.Range(Text.FromBinary(Json.FromValue(c)),3,4),BinaryEncoding.Hex)) in bytes{0}*256+bytes{1},
     UnitLiteral=(t)=>"[" & Text.Combine(List.Transform(Text.ToList(t),each Number.ToText(CodeUnit(_),"0","en-US")),",") & "]::BIGINT[]",
     U=(i)=>if a{i}[Kind]="Constant" and a{i}[Value] is text then UnitLiteral(a{i}[Value])
         else if Record.FieldOrDefault(A(i),"Encoding",null)="utf16" then V(i)
-        else "CASE WHEN " & V(i) & " IS NULL THEN NULL ELSE flatten(list_transform(list_filter(string_split(" & V(i) & ", ''),c -> c<>''), c -> CASE WHEN unicode(c)>65535 THEN [55296+((unicode(c)-65536)//1024),56320+((unicode(c)-65536)%1024)] ELSE [unicode(c)] END)) END",
+        else "CASE WHEN " & V(i) & " IS NULL THEN NULL ELSE flatten(list_transform(list_filter(string_split(" & V(i) & ", ''),lambda c: c<>''), lambda c: CASE WHEN unicode(c)>65535 THEN [55296+((unicode(c)-65536)//1024),56320+((unicode(c)-65536)%1024)] ELSE [unicode(c)] END)) END",
     // Keep repeated expressions behind aliases; this also makes nested calls tractable.
     TextInput="SELECT " & U(0) & " AS t",
     IntError=(sql,index)=>
@@ -57,7 +57,7 @@ let
             valid=items=null or List.AllTrue(List.Transform(items,each _ is text and Text.Length(_)=1)),
             chars=if dynamic then "coalesce(" & U(1) & "," & Whitespace & ")" else if items=null then Whitespace else if valid then UnitLiteral(Text.Combine(items)) else "[]::BIGINT[]",
             inputs="SELECT t, " & chars & " AS p FROM (" & TextInput & ") AS m",
-            bounds="SELECT *, coalesce(list_first(list_filter(range(1,len(t)+1),i -> NOT list_contains(p,t[i]))),len(t)+1) AS lo, coalesce(list_last(list_filter(range(1,len(t)+1),i -> NOT list_contains(p,t[i]))),0) AS hi FROM (" & inputs & ") AS m",
+            bounds="SELECT *, coalesce(list_first(list_filter(range(1,len(t)+1),lambda i: NOT list_contains(p,t[i]))),len(t)+1) AS lo, coalesce(list_last(list_filter(range(1,len(t)+1),lambda i: NOT list_contains(p,t[i]))),0) AS hi FROM (" & inputs & ") AS m",
             value="CASE WHEN t IS NULL THEN NULL ELSE list_slice(t," & (if f=Text.TrimEnd then "1" else "lo") & "," & (if f=Text.TrimStart then "len(t)" else "hi") & ") END",
             err=if dynamic then "(SELECT " & Err("t IS NOT NULL AND " & U(1) & " IS NOT NULL AND len(p)<>1","The value isn't a single-character string.",UnitJson("p"),"value-utf16") & " FROM (" & inputs & ") AS m)" else if valid then "NULL" else
                 "(SELECT " & Err("t IS NOT NULL","The value isn't a single-character string.",S(Text.FromBinary(Json.FromValue([Value=List.First(List.Select(items,each not (_ is text and Text.Length(_)=1)))]))),"json") & " FROM (" & inputs & ") AS m)"
@@ -67,11 +67,11 @@ let
         let dynamic=f=Text.PositionOf and argc>2 and a{2}[Kind]<>"Constant",occurrence=if dynamic then Occurrence.All else if f=Text.EndsWith then Occurrence.First else C(2,Occurrence.First),
             comparer=if f=Text.EndsWith then C(2,null) else C(3,null),
             supported=comparer=null or comparer=Comparer.Ordinal or comparer=Comparer.OrdinalIgnoreCase,
-            Fold=(s)=>if comparer=Comparer.OrdinalIgnoreCase then "list_transform(" & s & ",c -> coalesce(map_extract_value(" & ordinalCaseMap & ",c),c))" else s,
+            Fold=(s)=>if comparer=Comparer.OrdinalIgnoreCase then "list_transform(" & s & ",lambda c: coalesce(map_extract_value(" & ordinalCaseMap & ",c),c))" else s,
             inputs="SELECT " & Fold("t") & " AS t, " & Fold(U(1)) & " AS p FROM (" & TextInput & ") AS m",
-            candidates="list_filter(range(0, CASE WHEN len(p)=0 THEN len(t) ELSE greatest(len(t)-len(p)+1,0) END), i -> list_slice(t,i+1,i+len(p))=p)",
+            candidates="list_filter(range(0, CASE WHEN len(p)=0 THEN len(t) ELSE greatest(len(t)-len(p)+1,0) END), lambda i: list_slice(t,i+1,i+len(p))=p)",
             matches="SELECT *, " & candidates & " AS hits" & (if dynamic then ", coalesce(" & V(2) & ",0) AS occurrence" else "") & " FROM (" & inputs & ") AS m",
-            all="list_reduce(list_transform(hits,i->[i]), (acc,v)->CASE WHEN len(acc)=0 OR v[1]>=list_last(acc)+len(p) THEN list_concat(acc,v) ELSE acc END, []::BIGINT[])",
+            all="list_reduce(list_transform(hits,lambda i:[i]), lambda acc,v:CASE WHEN len(acc)=0 OR v[1]>=list_last(acc)+len(p) THEN list_concat(acc,v) ELSE acc END, []::BIGINT[])",
             allOccurrence=occurrence<>null and occurrence<>Occurrence.First and occurrence<>Occurrence.Last,
             value=if f=Text.EndsWith then "CASE WHEN t IS NULL THEN NULL WHEN len(p)=0 THEN 1 WHEN list_slice(t,len(t)-len(p)+1,len(t))=p AND len(p)<=len(t) THEN 1 ELSE 0 END"
                   else if dynamic then "CASE WHEN occurrence NOT IN (0,1) THEN CAST(to_json(" & all & ") AS VARCHAR) WHEN occurrence=1 THEN CAST(to_json(CASE WHEN len(p)=0 THEN greatest(len(t)-1,0) ELSE coalesce(list_last(hits),-1) END) AS VARCHAR) ELSE CAST(to_json(CASE WHEN len(p)=0 THEN 0 ELSE coalesce(list_first(hits),-1) END) AS VARCHAR) END"

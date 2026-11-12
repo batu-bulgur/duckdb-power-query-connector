@@ -1,0 +1,6 @@
+function,gui_operation,status,scope,remaining
+Text.Start,First characters,implemented_with_sdk_expression_boundaries,Full UTF-16 and Int32 count semantics; dynamic/decimal counts; native error records,Opaque surrounding SDK expressions
+Text.End,Last characters,implemented_with_sdk_expression_boundaries,Full UTF-16 and Int32 count semantics; dynamic/decimal counts; native error records,Opaque surrounding SDK expressions
+Text.Replace,Replace text,implemented_with_sdk_expression_boundaries,Dynamic old/new text; ordinal nonoverlapping matches; empty/null/error behavior,Opaque surrounding SDK expressions
+Text.Split,Delimiter split,implemented_with_sdk_expression_boundaries,Dynamic UTF-16 separator; ordered text list; nested consumers and error channels,GUI generated splitter and list element-access dispatch
+Text.Combine,Merge text,implemented_with_sdk_expression_boundaries,Ordered text lists; NULL omission; dynamic separators; ordinary GUI merges; type errors,Field-list constructor with row-dependent separator does not reach handler

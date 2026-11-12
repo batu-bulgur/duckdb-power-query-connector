@@ -1,0 +1,1 @@
+let s=DuckDB.Contents("__DB_PATH__",null,true,false,"single",[custom_user_agent="shape-group"]),t=s{[Item="gui_text_base"]}[Data],a=Table.AddColumn(t,"prefix",each Text.Start([label],1),type nullable text),g=Table.Group(a,{"prefix"},{{"count",each Table.RowCount(_),Int64.Type}}) in Table.Sort(g,{{"prefix",Order.Ascending}})

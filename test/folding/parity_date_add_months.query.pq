@@ -1,0 +1,1 @@
+let s=DuckDB.Contents("__DB_PATH__",null,true,false,"single",[custom_user_agent="gui-date-folding"]),t=s{[Item="gui_date_base"]}[Data] in Table.Sort(Table.SelectColumns(Table.AddColumn(Table.SelectRows(t,each [id]<>11),"value",each Date.AddMonths([d],1),type nullable date),{"id","value"}),{{"id",Order.Ascending}})

@@ -1,2 +1,2 @@
-let data=#table(type table[id=number,a=nullable number,b=nullable number,event_date=nullable date,event_time=nullable time,amount=nullable number],{{1,9007199254740992,9007199254740993,#date(2026,1,1),#time(12,34,56.123456),1.015},{2,0,0,null,null,-12.345},{3,null,null,#date(2026,1,3),#time(0,0,0),null}}) in
+let data=#table(type table[id=number,a=nullable number,b=nullable number,event_date=nullable date,event_time=nullable time,amount=nullable number],{{1,9007199254740992,9007199254740993,#date(2026,1,1),#time(12,34,56),1.015},{2,0,0,null,null,-12.345},{3,null,null,#date(2026,1,3),#time(0,0,0),null}}) in
 Table.SelectColumns(Table.AddColumn(Table.SelectRows(data,each [id]=1),"value",each Value.Equals([event_time],#time(12,34,56.123456)),type logical),{"id","value"})

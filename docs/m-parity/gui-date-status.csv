@@ -1,0 +1,9 @@
+function,gui_operation,status,scope,remaining
+Date.Year,Extract year,implemented_with_native_timezone_boundary,Known date/datetime/explicit M datetimezone; NULL/errors,Native TIMESTAMPTZ host context and other untranslated expressions
+Date.Month,Extract month,implemented_with_native_timezone_boundary,Known date/datetime/explicit M datetimezone; NULL/errors,Native TIMESTAMPTZ host context and other untranslated expressions
+Date.Day,Extract day,implemented_with_native_timezone_boundary,Known date/datetime/explicit M datetimezone; NULL/errors,Native TIMESTAMPTZ host context and other untranslated expressions
+Date.DayOfWeek,Day of week,implemented_with_native_timezone_boundary,Dynamic day and host-captured default; validation ordering,Native TIMESTAMPTZ host context and other untranslated expressions
+Date.AddDays,Add days,implemented_with_native_timezone_boundary,Dynamic Int32 conversion; full M range; precision and errors,Native TIMESTAMPTZ context and uncatchable UTC-range family
+Date.AddMonths,Add months,implemented_with_native_timezone_boundary,Dynamic Int32 conversion; clipping; full M range; precision and errors,Native TIMESTAMPTZ context and uncatchable UTC-range family
+Date.StartOfMonth,Month start,implemented_with_native_timezone_boundary,Kind/offset preservation; midnight; NULL/errors,Native TIMESTAMPTZ context and uncatchable UTC-range family
+Date.EndOfMonth,Month end,implemented_with_native_timezone_boundary,Leap/month clipping; exact 100 ns endpoint; kind/offset,Native TIMESTAMPTZ context and uncatchable UTC-range family

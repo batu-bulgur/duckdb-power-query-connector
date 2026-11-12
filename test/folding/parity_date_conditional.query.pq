@@ -1,0 +1,1 @@
+let s=DuckDB.Contents("__DB_PATH__",null,true,false,"single",[custom_user_agent="date-pipeline"]),t=s{[Item="gui_date_base"]}[Data],a=Table.AddColumn(t,"y",each Date.Year(if [id]=12 then null else Date.EndOfMonth([d])),Int64.Type) in Table.SelectColumns(Table.SelectRows(a,each [y]=2024),{"id","y"})

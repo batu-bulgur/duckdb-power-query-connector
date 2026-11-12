@@ -1,6 +1,6 @@
 // Canonical, type-tagged structural values prevent DuckDB's implicit coercions
 // from equating unlike M values. Numeric precision is selected explicitly.
-(ast,rowType,compile,render,roundScalar) as record =>
+(ast,rowType,compile,render,roundScalar,dateScalar) as record =>
 let
     args=ast[Arguments], nullable=ast[Function][Value]=Value.NullableEquals,
     precision=if List.Count(args)<3 or (args{2}[Kind]="Constant" and args{2}[Value]=null) then Precision.Double
@@ -39,8 +39,8 @@ let
                   else if kind="list" and encoding="list" then ListKey(sql)
                   else if kind="logical" then "CASE WHEN " & sql & " THEN 'true' ELSE 'false' END"
                   else if List.Contains({"date","datetime","datetimezone","time"},kind) and a[Kind]="Constant" then TemporalConstant(a[Value],kind)
-                  else if List.Contains({"datetime","time"},kind) then SevenDigits(sql)
-                  else if kind="datetimezone" then SevenDigits("timezone('UTC'," & sql & ")")
+                  else if List.Contains({"datetime","datetimezone"},kind) then "replace(" & dateScalar[Key](node,render) & ",'T',' ')"
+                  else if kind="time" then SevenDigits(sql)
                   else "CAST(" & sql & " AS VARCHAR)",
             bad=if kind="number" then
                     if precision<>Precision.Double then "CASE WHEN " & decimalSelected & " AND " & sql & " IS NOT NULL AND (NOT isfinite(" & numeric & ") OR (" & Record.FieldOrDefault(node,"NumericKindSql","'double'") & "='double' AND abs(" & numeric & ")>=79228162514264337593543950336) OR (" & Record.FieldOrDefault(node,"NumericKindSql","'double'") & "<>'double' AND abs(" & numeric & ")>79228162514264337593543950335)) THEN CAST(to_json(struct_pack(m := 'The number is out of range of a decimal value.',d := CAST(" & sql & " AS VARCHAR),k := 'double')) AS VARCHAR) ELSE NULL END"

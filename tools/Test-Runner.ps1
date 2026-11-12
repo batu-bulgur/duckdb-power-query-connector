@@ -39,3 +39,30 @@ $evidence.DiagnosticEvents.Odbc[1].Properties.Identifier='different-query'
 Must-Reject 'mismatched diagnostic identifiers' { Assert-FoldingEvidence $evidence $contract }
 $evidence.DiagnosticEvents.Odbc=@()
 Must-Reject 'missing ODBC diagnostics' { Assert-FoldingEvidence $evidence $contract }
+
+$catalogEvidence=[pscustomobject]@{DiagnosticEvents=[pscustomobject]@{Odbc=@(
+    [pscustomobject]@{EventName='QueryStart';Properties=[pscustomobject]@{Identifier='catalog';Command='SELECT column_name,data_type FROM duckdb_columns() WHERE table_name=''synthetic'''}}
+    [pscustomobject]@{EventName='QueryFinish';Properties=[pscustomobject]@{Identifier='catalog';RowCount=2;ExceptionMessage=$null}}
+    [pscustomobject]@{EventName='QueryStart';Properties=[pscustomobject]@{Identifier='data';Command='select id from synthetic limit 3'}}
+    [pscustomobject]@{EventName='QueryFinish';Properties=[pscustomobject]@{Identifier='data';RowCount=5;ExceptionMessage=$null}}
+)}}
+$dataContract=[pscustomobject]@{name='catalog-separated';maxRows=3;sqlPatterns=@('limit 3')}
+Assert-FoldingEvidence (Get-CatalogSeparatedEvidence $catalogEvidence -MetadataRows 2) $dataContract|Out-Null
+$catalogEvidence.DiagnosticEvents.Odbc[0].Properties.Command="SELECT column_name,data_type, TIMESTAMP '1970-01-01 00:00:00.123456' AS pq_timestamp, make_timestamp_ns(123456700) AS pq_ns_positive, make_timestamp_ns(-876543300) AS pq_ns_negative FROM duckdb_columns() WHERE table_name='synthetic'"
+Assert-FoldingEvidence (Get-CatalogSeparatedEvidence $catalogEvidence -MetadataRows 2) $dataContract|Out-Null
+$calibratedCatalog=$catalogEvidence.DiagnosticEvents.Odbc[0].Properties.Command
+$catalogEvidence.DiagnosticEvents.Odbc[0].Properties.Command='SELECT column_name,data_type, arbitrary_payload FROM duckdb_columns()'
+Must-Reject 'undeclared catalog projection' {Get-CatalogSeparatedEvidence $catalogEvidence -MetadataRows 2}
+$catalogEvidence.DiagnosticEvents.Odbc[0].Properties.Command=$calibratedCatalog
+$catalogEvidence.DiagnosticEvents.Odbc[1].Properties.RowCount=3
+Must-Reject 'oversized type catalog' {Get-CatalogSeparatedEvidence $catalogEvidence -MetadataRows 2}
+$catalogEvidence.DiagnosticEvents.Odbc[1].Properties.RowCount=2
+$catalogEvidence.DiagnosticEvents.Odbc[1].Properties.ExceptionMessage='catalog failure'
+Must-Reject 'failed type catalog' {Get-CatalogSeparatedEvidence $catalogEvidence -MetadataRows 2}
+$catalogEvidence.DiagnosticEvents.Odbc[1].Properties.ExceptionMessage=$null
+$catalogEvidence.DiagnosticEvents.Odbc[3].Properties.RowCount=6
+Must-Reject 'excess data after catalog subtraction' {Assert-FoldingEvidence (Get-CatalogSeparatedEvidence $catalogEvidence -MetadataRows 2) $dataContract}
+$catalogEvidence.DiagnosticEvents.Odbc[3].Properties.RowCount=1
+Must-Reject 'negative catalog-adjusted row count' {Assert-FoldingEvidence (Get-CatalogSeparatedEvidence $catalogEvidence -MetadataRows 2) $dataContract}
+$catalogEvidence.DiagnosticEvents.Odbc+= $catalogEvidence.DiagnosticEvents.Odbc[0]
+Must-Reject 'unexpected extra catalog request' {Get-CatalogSeparatedEvidence $catalogEvidence -MetadataRows 2}

@@ -1,0 +1,159 @@
+# GUI date calculations and measured boundaries
+
+## Selection and scope
+
+The next inventory group covers eight date-menu operations. Selection follows
+the inventory's priority-two candidates and common GUI workflows, not measured
+user telemetry. Existing first-14 work remains in [scalar-parity.md](scalar-parity.md).
+
+| M function | GUI operation | SQL calculation |
+| --- | --- | --- |
+| [Date.Year](https://learn.microsoft.com/en-us/powerquery-m/date-year) | Extract year | YEAR over the represented local date |
+| [Date.Month](https://learn.microsoft.com/en-us/powerquery-m/date-month) | Extract month | MONTH |
+| [Date.Day](https://learn.microsoft.com/en-us/powerquery-m/date-day) | Extract day | DAY |
+| [Date.DayOfWeek](https://learn.microsoft.com/en-us/powerquery-m/date-dayofweek) | Day of week | DOW adjusted by explicit or host-captured first day |
+| [Date.AddDays](https://learn.microsoft.com/en-us/powerquery-m/date-adddays) | Add/subtract days | Bounded Gregorian day ordinal |
+| [Date.AddMonths](https://learn.microsoft.com/en-us/powerquery-m/date-addmonths) | Add/subtract months | Bounded month ordinal and clipping |
+| [Date.StartOfMonth](https://learn.microsoft.com/en-us/powerquery-m/date-startofmonth) | Start of month | DATE_TRUNC and kind restoration |
+| [Date.EndOfMonth](https://learn.microsoft.com/en-us/powerquery-m/date-endofmonth) | End of month | LAST_DAY and exact final M tick |
+
+Mappings cover known date, datetime and explicit-offset M datetimezone values,
+nulls, dynamic numeric arguments, nested calculations, date conditionals and
+ordinary M errors. M still validates arguments outside the declared number
+parameter type. Existing unavailable AST constructors and other untranslated
+surrounding expressions are not claimed as supported.
+
+## Representation and errors
+
+`DateScalar.pqm` performs calendar arithmetic in SQL with day/month ordinals
+bounded to years 1 through 9999. Fractional, nonfinite and out-of-Int32 arguments
+follow M's validation order. Encoded decimals are checked from coefficient/scale
+text, avoiding an inexact DOUBLE test or an overflowing scientific-string cast.
+Default DayOfWeek captures the active M host's first-day behavior at compile time;
+it does not change locale or assume that every host starts on Sunday.
+
+ISO transport retains seven fractional digits and an explicit fixed offset.
+EndOfMonth for datetime/zone produces `23:59:59.9999999`; passing it through
+DuckDB's microsecond TIMESTAMP would change the answer. The client restores the
+temporal kind and value without rerunning the target date operation. Temporal
+comparisons/equality/sorting use compatible keys, including UTC instant keys for
+explicit M datetimezone. Same-kind date conditionals and nullable branches work.
+
+Native error templates preserve Reason, Message, Detail, format/parameters and
+ErrorCode. Date and DateTime range errors differ. DayOfWeek validates its day
+before rejecting a non-date value; other functions use their own ordering.
+
+Owned SQL views use `Table.View(null, handlers)`: GetType/GetRows supply their
+result. A native shadow base made the SDK attempt an untranslatable native index
+before reaching the owned SQL handlers. The date/filter/sort/index regression
+checks the correction with strict folding enabled.
+
+## Native ODBC input conversion
+
+Parity is against values M actually reads. BOOLEAN is read as text and TIME
+loses its fraction. The local ODBC engine v1.5.4 converts TIMESTAMP_NS to
+microseconds by truncating the epoch count toward zero. Examples for that driver:
+
+- BOOLEAN TRUE becomes the M text `"true"`.
+- TIME `12:34:56.123456` becomes `#time(12,34,56)`.
+- NS `.123456700` becomes `.123457` before the Unix epoch and `.123456` after it.
+
+The pinned hosted ODBC 1.4.4.0 exposed a different timestamp conversion: its
+native SQL_C_TYPE_TIMESTAMP fraction contains microseconds in the nanosecond
+field. An unregistered official driver ABI probe reproduced
+`2024-01-31T12:34:56.000123456` for SQL TIMESTAMP `.123456`. The first hosted run
+therefore correctly rejected the original NS mapping: 1,056 of 20,196 paired
+checks differed, although all 162 strict folding cases passed.
+
+The cached catalog query now also returns three fixed synthetic TIMESTAMP/NS
+probes. Their values, as actually received by M, choose the SQL conversion for
+both TIMESTAMP and TIMESTAMP_NS. This measures the connection's behavior rather
+than guessing from a driver/engine version. Known microsecond and legacy fraction
+policies are supported; an unrecognized conversion safely stays in M. The probes
+add columns to the same bounded request, not another request or data-table scan.
+
+Operands mirror those conversions. The old time-equality baseline had assumed
+the SQL TIME fraction survived the driver. Its expected result changes from true
+to false, with a matching source-free input correction and a buffered-native-value
+oracle. The expectation is based on actual M input, not regenerated SQL output.
+
+## Native TIMESTAMPTZ context boundary
+
+ODBC exposes TIMESTAMP and TIMESTAMPTZ with the same native schema name. A cached,
+table-scoped `duckdb_columns()` lookup separates their physical types. It is one
+separately checked catalog request, not a per-row query. DATE and explicit M
+datetimezone inputs do not need that lookup.
+
+Native TIMESTAMPTZ requires the M host's timezone rules. On the measured Windows
+Istanbul host, a synthetic 1900 value rendered as `12:34:56.123456` using DuckDB's
+IANA conversion but `12:38:00.123456` when M read it using Windows rules. A CAST
+or server timezone selection cannot promise the same historical local clock.
+The public ODBC schema does not serialize the host's full rule context. General
+folding needs that context and an equivalent backend conversion.
+
+This path explicitly stops folding and uses M. The `date_native_timezone`
+negative checks 20,196 buffered result/error comparisons before rejecting folding.
+It is portable across hosts where the specific historical offsets agree; the
+classification guard remains explicit. Failed physical-type discovery also
+declines safely rather than assuming a timezone conversion.
+
+## Native UTC-range failure
+
+Even M `try` cannot catch the pinned engine's CLR offset failure for:
+
+```powerquery
+try Date.StartOfMonth(#datetimezone(1,1,15,0,0,0,14,0))
+try Date.EndOfMonth(#datetimezone(9999,12,1,0,0,0,-14,0))
+```
+
+Both fail with `The UTC time represented when the offset is applied must be
+between year 0 and 10,000.` and parameter `offset`. Reproducers live in
+`test/boundaries/date_zone_native_min.pq` and `date_zone_native_max.pq`.
+Row-dependent SQL guards this range instead of returning a successful value.
+A backend DataSource.Error is not claimed identical to the uncatchable CLR error.
+
+## Validation
+
+Focused coverage includes 20 strict result/SQL/data-row folding cases, eight
+source-free M baselines and nine paired oracles. Seven 2,244-row matrices check
+141,372 values/errors over dates, timestamps, NS input, invalid primitives and
+three explicit offsets. Extra oracles check native values and exact decimal
+arguments. The million-row filter transfers three rows. Complete-suite evidence
+is recorded after final artifact verification.
+
+Timestamp catalog traffic has separate successful identifiers, SQL shape and
+small row budgets. The calculation retains its own transfer budget; the SDK's
+cumulative counter is adjusted only by validated catalog rows. Existing contracts
+keep their one-query requirement. Runner controls reject extra/failed/oversized
+catalog reads and invalid adjusted row counts.
+
+SDK/ODBC tests do not establish Excel or Power BI Desktop GUI integration.
+Installed drivers, DSNs, sessions, locale and trust settings are unchanged.
+
+## Local complete-suite receipt — 2026-11-12
+
+`Verify-Change.ps1 -BaseRef origin/main -Connector bin/AnyCPU/Debug/DuckDB.mez`
+selected full scope and completed all six parallel partitions successfully.
+The checked package has 19 source-matched resources and SHA-256
+`3F01237E8550FFAA8A4047347D4CFF52CB4346970CC7C8858E5F3C74010BA83B`.
+
+| Check | Result |
+| --- | --- |
+| Functional cases | 36 passed |
+| Direct buffered M value/error checks | 189,372 passed, including 141,434 new date/input checks |
+| Source-free M references | 108 passed |
+| Strict SQL/data-row folding cases | 162 distinct cases passed, including 20 new date cases |
+| Negative controls | 4 correct-result cases rejected as folding successes |
+| Native failure reproducers | 4 expected failures reproduced without ODBC |
+| Evidence-runner rejection controls | 16 passed |
+| Validation-scope policy cases | 33 passed |
+
+The coordinator rechecked package/source hashes and rejected missing, duplicate
+or unexpected completed folding case names. Local evidence is intentionally
+ignored under `.agent/verification/b0cb1553a6044c208d57ec7b115f8066/`.
+The functional run is `.agent/test/20261112-131649-eef09b2f/`, references are in
+`.agent/parity-reference/71b797b200984e379000256e6fd68ab1/`, negatives in
+`.agent/negative-controls/0359996da3854808acce46b70cb9d421/`, and native failures
+in `.agent/native-boundaries/8a61d752890a47cc941fb0faf09cb36e/`.
+Measured environment: SDK 2.155.2, installed ODBC engine v1.5.4. Hosted CI's
+pinned ODBC 1.4.4.0 is a separate required run, not inferred from this receipt.

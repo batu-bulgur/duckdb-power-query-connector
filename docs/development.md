@@ -194,10 +194,11 @@ and the separate opaque culture-comparer boundary.
 record shape are not described by the public ODBC parameter reference. This
 implementation is measured on SDK 2.155.2, not an assurance about every Mashup
 version. Strict result/SQL/row tests must gate SDK changes. The official ODBC
-2.0.0.1 escape diagnostic remains historical evidence; the complete new mapping
-has been tested locally with the installed engine v1.5.4. Hosted CI's ODBC
-1.4.4.0 and Desktop/Excel hosts require their own runs. Driver source/build
-changes remain out of scope. See [text folding evidence](text-folding.md).
+2.0.0.1 escape diagnostic remains historical evidence. The current primary
+runtime is DuckDB 2.0.0 through ODBC 2.0.0.1; both local and hosted full suites
+gate its release. Desktop/Excel hosts require separate runs. Driver source/build
+changes remain out of scope. See [text folding evidence](text-folding.md) and
+the [current runtime contract](duckdb-2-runtime.md).
 
 The SDK/fixture/runner tooling is a generally reusable, separate contribution.
 ADBC research and any future Excel-specific experiment must stay separate from
@@ -213,7 +214,8 @@ integration target whose folding must be measured in that host. Neither Excel
 nor Power BI GUI integration is established by PQTest alone.
 
 CI validates the artifact from upstream's MSBuild job. Full scope runs the same
-`verify -Parallel` command and installs the pinned ODBC 1.4.4.0 driver. Metadata
+`verify -Parallel` command and installs the pinned ODBC 2.0.0.1 driver after
+checking the official Windows AMD64 ZIP digest in `tools/toolchain.json`. Metadata
 scope runs package/source integrity and SDK loading after version/publisher guards;
 it does not install ODBC or run the unchanged M suites. Hosted runner setup is
 separate from installation procedures for corporate machines. CI records synthetic

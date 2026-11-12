@@ -1,0 +1,60 @@
+// Reproduce the SDK's NumberValue.Round decimal path with a 96-bit coefficient.
+// The binary conversion uses the legacy CLR 15-significant-digit algorithm,
+// including the SDK's exact Int64 fast path. SQL never uses DOUBLE for ties.
+(ast,rowType,compile,render) as record =>
+let
+    a=ast[Arguments], count=List.Count(a), inputNode=compile(a{0}),
+    Val=(i)=>render(compile(a{i})),
+    InputType=if Record.FieldOrDefault(inputNode,"Encoding",null)="number" then type nullable number
+              else if a{0}[Kind]="FieldAccess" then Record.Field(Type.RecordFields(rowType),a{0}[MemberName])[Type]
+              else if a{0}[Kind]="Constant" then Value.Type(a{0}[Value]) else Record.FieldOrDefault(compile(a{0}),"Type",type nullable number),
+    facets=Type.Facets(InputType),
+    // The installed driver omits numeric facets for UBIGINT, although its
+    // ODBC value reaches M as an exact UInt64/Decimal number.
+    scale=if Record.FieldOrDefault(facets,"NativeTypeName",null)="UBIGINT" then 0 else Record.FieldOrDefault(facets,"NumericScale",null),
+    precision=Record.FieldOrDefault(facets,"NumericPrecision",null),
+    binary=List.Contains({24,53},precision) or scale=null,
+    P=(s)=>"CAST('1' || repeat('0', CAST(greatest(least(" & s & ",29),0) AS INTEGER)) AS HUGEINT)",
+    powers="[" & Text.Combine(List.Transform({0..28},each "1e" & Text.From(_,"en-US")),",") & "]::DOUBLE[]",
+    encoded=Record.FieldOrDefault(inputNode,"Encoding",null)="number",
+    raw=Record.FieldOrDefault(inputNode,"RawValueSql",render(inputNode)),
+    base="SELECT " & (if encoded then "CAST(" & raw & " AS DOUBLE)" else Val(0)) & " AS x, coalesce(" & (if count<2 then "NULL" else Val(1)) & ",0) AS d, coalesce(" & (if count<3 then "NULL" else Val(2)) & ",4) AS mode" &
+        (if encoded then ", " & raw & " AS raw_value, " & Record.FieldOrDefault(inputNode,"NumericKindSql","'double'") & " AS original_kind" else ""),
+    doubleInput=if encoded then "original_kind='double'" else if not binary and scale<>null then "FALSE" else "TRUE",
+    safe="SELECT *, CASE WHEN isfinite(x) AND abs(x)<79228162514264337593543950336 THEN abs(CAST(x AS DOUBLE)) ELSE 0 END AS ax FROM (" & base & ") AS m",
+    exponent="SELECT *, CAST(split_part(printf('%a',ax),'p',2) AS INTEGER)+1 AS exponent FROM (" & safe & ") AS m",
+    power="SELECT *, least(28, 14-((exponent*19728)>>16)) AS p0 FROM (" & exponent & ") AS m",
+    adjustedPower="SELECT *, CASE WHEN p0=-1 AND ax<1e15 THEN 0 ELSE p0 END AS p1 FROM (" & power & ") AS m",
+    scaled="SELECT *, CASE WHEN p1>=0 THEN ax*(" & powers & ")[CAST(p1+1 AS INTEGER)] ELSE ax/(" & powers & ")[CAST(1-p1 AS INTEGER)] END AS scaled FROM (" & adjustedPower & ") AS m",
+    adjusted="SELECT *, CASE WHEN scaled<1e14 AND p1<28 THEN scaled*10 ELSE scaled END AS scaled1, CASE WHEN scaled<1e14 AND p1<28 THEN p1+1 ELSE p1 END AS p FROM (" & scaled & ") AS m",
+    mantissa="SELECT *, CAST(round_even(scaled1,0) AS HUGEINT) AS mant FROM (" & adjusted & ") AS m",
+    exactInteger="x=trunc(x) AND x>=-9223372036854775808 AND x<9223372036854775808",
+    coefficient0=if not binary and scale<>null and not encoded then
+        "SELECT *, abs(CAST(replace(CAST(x AS VARCHAR),'.','') AS HUGEINT)) AS coeff, " & Text.From(scale,"en-US") & " AS scale FROM (" & base & ") AS m"
+        else "SELECT *, CASE WHEN " & exactInteger & " THEN abs(CAST(x AS HUGEINT)) WHEN p<0 THEN mant*" & P("-p") & " ELSE mant END AS coeff, CASE WHEN " & exactInteger & " THEN 0 ELSE greatest(p,0) END AS scale FROM (" & mantissa & ") AS m",
+    rawParts="SELECT *, split_part(lower(raw_value),'e',1) AS raw_mantissa, CAST(coalesce(nullif(split_part(lower(raw_value),'e',2),''),'0') AS INTEGER) AS raw_exponent FROM (" & coefficient0 & ") AS m",
+    rawDigits="SELECT *, CASE WHEN original_kind='decimal' THEN abs(CAST(replace(raw_mantissa,'.','') AS HUGEINT)) ELSE 0 END AS raw_coeff, CASE WHEN contains(raw_mantissa,'.') THEN length(split_part(raw_mantissa,'.',2)) ELSE 0 END-raw_exponent AS raw_scale FROM (" & rawParts & ") AS m",
+    coefficient=if not encoded then coefficient0 else "SELECT * EXCLUDE(coeff,scale), CASE WHEN original_kind='decimal' THEN raw_coeff*" & P("-raw_scale") & " ELSE coeff END AS coeff, CASE WHEN original_kind='decimal' THEN greatest(raw_scale,0) ELSE scale END AS scale FROM (" & rawDigits & ") AS m",
+    Max="79228162514264337593543950335",
+    EvenQuotient=(n,p)=>"(" & n & "//" & p & "+CASE WHEN (" & n & "%" & p & ")*2>" & p & " OR ((" & n & "%" & p & ")*2=" & p & " AND (" & n & "//" & p & ")%2=1) THEN 1 ELSE 0 END)",
+    shifts="SELECT *, greatest(scale-d-28,0) AS drop_scale, (d>=scale AND coeff>" & Max & "//" & P("d-scale") & ") AS scale_overflow FROM (" & coefficient & ") AS m",
+    scaledDecimal="SELECT *, CASE WHEN scale_overflow THEN 0 WHEN d>=scale THEN coeff*" & P("d-scale") & " WHEN drop_scale>29 THEN 0 ELSE " & EvenQuotient("coeff",P("drop_scale")) & " END AS sc, CASE WHEN d>=scale THEN 0 ELSE least(scale-d,28) END AS ss FROM (" & shifts & ") AS m",
+    halfAdded="SELECT *, greatest(ss,1) AS hs, sc*" & P("greatest(ss,1)-ss") & "+5*" & P("greatest(ss,1)-1") & " AS hc FROM (" & scaledDecimal & ") AS m",
+    halfNormalized="SELECT *, CASE WHEN hc>" & Max & " THEN " & EvenQuotient("hc","10::HUGEINT") & " ELSE hc END AS ac, CASE WHEN hc>" & Max & " THEN hs-1 ELSE hs END AS ass FROM (" & halfAdded & ") AS m",
+    truncated="SELECT *, ac//" & P("ass") & " AS aq, ac%" & P("ass") & "=0 AS tie FROM (" & halfNormalized & ") AS m",
+    rounded="SELECT *, CASE WHEN NOT tie THEN aq WHEN mode=3 THEN sc//" & P("ss") & " WHEN mode=4 THEN aq-aq%2 WHEN mode=0 AND x<0 OR mode=1 AND x>0 THEN aq-1 ELSE aq END AS rounded FROM (" & truncated & ") AS m",
+    original="CAST(x AS VARCHAR)",
+    value="CASE WHEN x IS NULL THEN NULL WHEN NOT isfinite(x) THEN " & original &
+        " WHEN d<>trunc(d) OR NOT isfinite(d) OR d < -2147483648 OR d > 2147483647 THEN " & original &
+        " WHEN coeff>79228162514264337593543950335 OR (" & doubleInput & " AND abs(x)>=79228162514264337593543950336) THEN " & original &
+        " WHEN d < -28 THEN '0' WHEN d>28 OR scale_overflow THEN CAST(sign(x)*coeff AS VARCHAR)||'e-'||CAST(scale AS VARCHAR)" &
+        " WHEN ac>79228162514264337593543950335 THEN error('Power Query Number.Round overflows System.Decimal while adding the midpoint.')" &
+        " WHEN d<=0 AND rounded*" & P("-d") & ">79228162514264337593543950335 THEN error('Power Query Number.Round overflows System.Decimal for this value and digits.')" &
+        " ELSE CAST(sign(x)*rounded AS VARCHAR)||'e'||CAST(CAST(-d AS INTEGER) AS VARCHAR) END",
+    err="CASE WHEN x IS NOT NULL AND mode NOT IN (0,1,2,3,4) THEN CAST(to_json(struct_pack(m := 'The value for a ''RoundingMode.Type'' enumeration was not one of the allowed values: ''RoundingMode.Up, RoundingMode.Down, RoundingMode.AwayFromZero, RoundingMode.TowardZero, RoundingMode.ToEven''.', d := CAST(mode AS VARCHAR), k := 'number')) AS VARCHAR) ELSE NULL END",
+    inherited=Text.Combine(List.Transform(a,each if _[Kind]="Constant" then "NULL" else Record.FieldOrDefault(compile(_),"ErrorSql","NULL")),","),
+    originalKind=if encoded then "original_kind" else if not binary and scale<>null then "'decimal'" else "'double'",
+    kind="(SELECT CASE WHEN d<>trunc(d) OR NOT isfinite(d) OR d < -2147483648 OR d > 2147483647 THEN " & originalKind & " WHEN NOT isfinite(x) OR (" & doubleInput & " AND abs(x)>=79228162514264337593543950336) THEN 'double' ELSE 'decimal' END FROM (" & base & ") AS m)"
+in if not Type.Is(InputType,type nullable number) then error "Number.Round requires a numeric argument."
+   else [Kind="Literal",Value="(SELECT " & value & " FROM (" & rounded & ") AS m)",Type=type nullable number,Encoding="number",Transport=true,
+         NumericKindSql=kind,ErrorSql="coalesce(" & inherited & ", (SELECT " & err & " FROM (" & base & ") AS m))"]

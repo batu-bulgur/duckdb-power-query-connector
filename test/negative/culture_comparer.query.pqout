@@ -1,0 +1,1 @@
+#table(type table[id=number,eq=logical],{{15,true},{16,false},{17,false},{18,true}})

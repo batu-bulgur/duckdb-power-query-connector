@@ -1,0 +1,1 @@
+#table(type table [id=number,value=nullable text], {{1,"a😀b"},{2,"abcdef"},{3,"#(tab) abc"},{4,""},{5,null},{6,"Şİı"},{7,"😀#(0001)b"},{8,"ab%_c'd\x"},{9,"  x"},{10,""},{11,"😀😀b"},{12,"x#(0001)😀#(0001)z"}})

@@ -1,0 +1,1 @@
+#table(type table [id=number,value=text], {{1,"xa😀b"},{2,"abcdef"}})

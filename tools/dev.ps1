@@ -2,10 +2,13 @@
 [CmdletBinding()]
 param(
     [Parameter(Position=0, Mandatory)]
-    [ValidateSet('bootstrap','doctor','build','test','test-folding','verify')][string]$Command,
+    [ValidateSet('bootstrap','doctor','build','test','test-folding','test-parity','verify')][string]$Command,
     [string]$Connector,
     [string]$Case,
-    [switch]$IncludeKnownLimitations
+    [switch]$IncludeKnownLimitations,
+    [switch]$Parallel,
+    [ValidateRange(0,3)][int]$ShardIndex = 0,
+    [ValidateRange(1,4)][int]$ShardCount = 1
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
@@ -69,11 +72,18 @@ function Build-Connector {
             } finally { $stream.Dispose() }
         }
     } finally { $archive.Dispose() }
+    # info loads the main section lazily; parse every packaged module as well.
+    $moduleFiles=@($entries | Where-Object {[string]$_.Include -like '*.pqm'})
+    $moduleTexts=@($moduleFiles | ForEach-Object {'"'+(Get-Content (Join-Path $repo $_.Include) -Raw).Replace('#','#(#)').Replace('"','""')+'"'})
+    $syntaxQuery=Join-Path (Split-Path $source) 'parse-modules.pq'
+    ('let values={'+($moduleTexts -join ',')+'}, parsed=List.Transform(values,each Expression.Evaluate(_,#shared)), forced=List.Sum(List.Transform(parsed,each if Value.Is(_,type any) then 1 else 0)) in #table({"parsed"},{{forced}})') | Set-Content $syntaxQuery -Encoding utf8
+    $parsed=@(Invoke-PqJson -Arguments @('run-test','-e',$defaultMez,'-q',$syntaxQuery))
+    if($parsed.Count -ne 1 -or $parsed[0].Status -ne 'Passed' -or $parsed[0].Output[0].parsed -ne $moduleFiles.Count){throw 'A packaged module failed syntax validation.'}
     Write-Host "Built and loaded $defaultMez ($($entries.Count) verified resources)."
 }
 
 function Invoke-RegressionSuite {
-    param([switch]$Folding)
+    param([switch]$Folding, [switch]$Parity)
     $run = Join-Path $repo ('.agent/test/' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '-' + [guid]::NewGuid().ToString('N').Substring(0,8))
     [void](New-Item -ItemType Directory -Path $run -Force)
     $fixture = & (Join-Path $PSScriptRoot 'Seed-Fixture.ps1') -DatabasePath (Join-Path $run 'fixture.db')
@@ -87,7 +97,13 @@ function Invoke-RegressionSuite {
         $files += @(Get-ChildItem (Join-Path $repo 'test/negative') -Filter '*.query.pq' | Sort-Object Name)
         $contracts += @(Get-Content (Join-Path $repo 'test/negative/contracts.json') -Raw | ConvertFrom-Json)
     }
-    if ($Case) { $files = @($files | Where-Object Name -eq "$Case.query.pq") }
+    if ($Parity) { $files = @($files | Where-Object Name -like 'parity_*.query.pq') }
+    if ($Case) { $files = @($files | Where-Object Name -like "$Case.query.pq") }
+    if ($ShardIndex -ge $ShardCount) { throw 'ShardIndex must be smaller than ShardCount.' }
+    if ($ShardCount -gt 1) {
+        if (-not $Folding) { throw 'Only folding cases may be partitioned.' }
+        $files = @($files | Where-Object { ([array]::IndexOf($files, $_) % $ShardCount) -eq $ShardIndex })
+    }
     if ($files.Count -eq 0) { throw 'No matching test cases; refusing an empty test suite.' }
     $summary = [Collections.Generic.List[object]]::new()
     foreach ($file in $files) {
@@ -107,10 +123,11 @@ function Invoke-RegressionSuite {
         $credentialResult = ($credentialRaw -join "`n") | ConvertFrom-Json
         if ($credentialExit -ne 0 -or $credentialResult.Status -ne 'Success') { throw 'Could not configure isolated anonymous test credentials.' }
         $arguments = @('compare','-e',$Connector,'-q',$query,'-cfp',$credentials,'--failOnMissingOutputFile')
-        if ($Folding) {
+        if ($Folding -or $name -eq 'parity_round_nan' -or $name -like 'parity_*_oracle') {
             $diagnostics = Join-Path $run "$name-diagnostics"
             [void](New-Item -ItemType Directory -Path $diagnostics)
-            $arguments += @('--failOnFoldingFailure','--diagnosticsFolderPath',$diagnostics)
+            $arguments += @('--diagnosticsFolderPath',$diagnostics)
+            if ($Folding) { $arguments += '--failOnFoldingFailure' }
         }
         $result = @(Invoke-PqJson -Arguments $arguments -LogPath (Join-Path $run "$name.json"))
         try {
@@ -122,6 +139,30 @@ function Invoke-RegressionSuite {
                 $summary.Add($evidence)
                 Write-Host "PASS $name (ODBC rows: $($evidence.Rows))"
             } else {
+                if ($name -eq 'parity_round_nan') {
+                    # The final M IsNaN call is an oracle, deliberately after a
+                    # buffer. Still require the preceding Round to execute in SQL.
+                    Assert-FoldingEvidence -Result $result[0] -Contract ([pscustomobject]@{
+                        name=$name;maxRows=1;sqlPatterns=@('round_even\(', 'HUGEINT')
+                    }) | Out-Null
+                }
+                $oracle=if($name -eq 'parity_round_matrix_oracle'){@{maxRows=41595;pattern='round_even\(';patterns=@('round_even\(','HUGEINT')}}
+                    elseif($name -like 'parity_filter_error_*_oracle'){@{maxRows=3;pattern='__duckdb_pq_error_';patterns=@('__duckdb_pq_error_','list_slice','coalesce')}}
+                    elseif($name -like 'parity_index_*_oracle'){@{maxRows=10;pattern='WITH RECURSIVE';patterns=@('WITH RECURSIVE','pq_index_values')}}
+                    elseif($name -eq 'parity_slice_matrix_oracle'){@{maxRows=3020;pattern='list_slice';patterns=@('list_slice','struct_pack')}}
+                    elseif($name -eq 'parity_numeric_kinds_oracle'){@{maxRows=35;pattern='HUGEINT';patterns=@('HUGEINT','struct_pack')}}
+                    elseif($name -eq 'parity_range_overflow_oracle'){@{maxRows=60;pattern='list_slice';patterns=@('list_slice','struct_pack')}}
+                    elseif($name -eq 'parity_error_transport_oracle'){@{maxRows=5;pattern='struct_pack';patterns=@('list_slice','list_resize','struct_pack')}}else{$null}
+                if ($oracle) {
+                    $events=@($result[0].DiagnosticEvents.Odbc)
+                    $starts=@($events | Where-Object EventName -eq QueryStart)
+                    if($starts.Count -ne 2){throw 'Differential oracle requires exactly one folded query and one buffered M oracle read.'}
+                    $folded=@($starts|Where-Object {$_.Properties.Command -match $oracle.pattern})
+                    if($folded.Count -ne 1){throw 'Differential oracle did not run exactly one target SQL query.'}
+                    $identifier=$folded[0].Properties.Identifier
+                    $slice=[pscustomobject]@{DiagnosticEvents=[pscustomobject]@{Odbc=@($events|Where-Object {$_.Properties.Identifier -eq $identifier})}}
+                    Assert-FoldingEvidence -Result $slice -Contract ([pscustomobject]@{name=$name;maxRows=$oracle.maxRows;sqlPatterns=$oracle.patterns}) | Out-Null
+                }
                 $summary.Add([pscustomobject]@{Query=$name;Status='Passed'})
                 Write-Host "PASS $name"
             }
@@ -172,12 +213,23 @@ try {
             'build' { }
             'test' { Invoke-RegressionSuite }
             'test-folding' { Invoke-RegressionSuite -Folding }
+            'test-parity' {
+                & (Join-Path $PSScriptRoot 'Test-ParityReference.ps1') -PqTest $pqtest -Connector $Connector -Case $Case
+                Invoke-RegressionSuite -Folding -Parity
+            }
             'verify' {
+                if ($Parallel) {
+                    if ($Case -or $IncludeKnownLimitations -or $ShardCount -ne 1) { throw 'Parallel verification requires the complete supported suite.' }
+                    & (Join-Path $PSScriptRoot 'Invoke-ParallelVerification.ps1') -Connector $Connector -PqTest $pqtest
+                    break
+                }
                 & (Join-Path $PSScriptRoot 'Test-Versioning.ps1')
                 & (Join-Path $PSScriptRoot 'Test-Runner.ps1')
                 Invoke-RegressionSuite
+                & (Join-Path $PSScriptRoot 'Test-ParityReference.ps1') -PqTest $pqtest -Connector $Connector
                 Invoke-RegressionSuite -Folding
                 & (Join-Path $PSScriptRoot 'Test-NegativeControls.ps1') -Connector $Connector -PqTest $pqtest
+                & (Join-Path $PSScriptRoot 'Test-NativeBoundaries.ps1') -Connector $Connector -PqTest $pqtest
             }
         }
     }

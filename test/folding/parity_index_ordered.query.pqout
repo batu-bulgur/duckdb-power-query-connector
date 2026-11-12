@@ -1,0 +1,1 @@
+#table(type table [id=number,index=number], {{0,10},{1,15},{2,20}})

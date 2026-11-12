@@ -2,6 +2,11 @@
 
 This is the Power Query Custom Connector for DuckDB. Use this to connect to a DuckDB database in memory, from a local file or on MotherDuck with Power BI. Host integration differs in Excel; a self-distributed MEZ must not be assumed to load there (see [the development guide](docs/development.md#contribution-boundaries-and-host-integration)).
 
+Personal-fork builds, checksums and per-version feature/folding notes are on the
+[fork releases page](https://github.com/batu-bulgur/duckdb-power-query-connector/releases).
+See the [changelog](CHANGELOG.md) and [measured parity scope](docs/scalar-parity.md)
+before assuming that a particular overload or host is supported.
+
 1. [Installing](#installing)
 2. [How to use with Power BI](#how-to-use-with-power-bi)
 3. [Turning on UTF-8 support in the Language & Region settings](#turning-on-utf-8-support-in-the-language--region-settings)
@@ -23,7 +28,7 @@ This is the Power Query Custom Connector for DuckDB. Use this to connect to a Du
    - Enable "Allow any extensions to load without validation or warning"
    - ![Dialog window showing Power BI Options -> Security -> Data Extensions](./images/PowerBI-data-extensions.png)
 5. Download the latest version of the DuckDB Power Query extension:
-      - [duckdb-power-query-connector.mez](https://github.com/motherduckdb/duckdb-power-query-connector/releases/latest/download/duckdb-power-query-connector.mez)
+      - [duckdb-power-query-connector.mez](https://github.com/batu-bulgur/duckdb-power-query-connector/releases/latest/download/duckdb-power-query-connector.mez)
 6. Create the Custom Connectors directory if it does not yet exist:
    - Navigate to `[Documents]\Power BI Desktop\Custom Connectors`
    - Create this folder, if it doesn't exist
@@ -116,6 +121,13 @@ Unicode equality and its Turkish/emoji/quoting regressions are described in
 now folds to native `right(column, length(suffix)) = suffix`, with result,
 escape-exclusion and ODBC-row regression contracts. This was verified on SDK
 2.155.2 and ODBC engine v1.5.4; other driver/host versions need separate validation.
+
+The subsequent [M scalar and index parity work](docs/scalar-parity.md) extends
+the first 14 targets with UTF-16 calculations, decimal rounding, typed equality
+and ordered SQL index plans. That document records differential M tests, actual
+SQL/ODBC evidence and reproduced SDK boundaries; it does not claim complete
+M-language coverage. Run `./tools/dev.ps1 test-parity` for the paired reference
+and connector subset, or `verify` for all checks.
 
 CI builds the `.mez` on every PR and push to `main` (see `.github/workflows/build.yaml`).
 The build just runs `msbuild DuckDB.proj` on a `windows-2025` runner — the project's

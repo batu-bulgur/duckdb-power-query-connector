@@ -1,0 +1,1 @@
+let s=DuckDB.Contents("__DB_PATH__",null,true,false,"single",[custom_user_agent="shape-gui"]),t=Table.SelectRows(s{[Item="gui_text_base"]}[Data],each [id]=1),a=Table.ReplaceValue(t,"😀","X",Replacer.ReplaceText,{"label"}) in Table.SelectColumns(a,{"id","label"})

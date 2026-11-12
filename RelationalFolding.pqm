@@ -1,6 +1,6 @@
 // ODBC remains the transport. This view retains an ordered SQL plan for table
 // operations which cannot be represented by scalar ODBC invocation overrides.
-(connection, navigation as table, scalarVisitor as record, advancedScalar as function, roundScalar as function, equalityScalar as function, indexSql as function, dateScalar as record) as table =>
+(connection, navigation as table, scalarVisitor as record, advancedScalar as function, roundScalar as function, equalityScalar as function, indexSql as function, dateScalar as record, textShape as record) as table =>
 let
     Q = (s as text) => """" & Text.Replace(s, """", """""") & """",
     L = (v) =>
@@ -25,7 +25,7 @@ let
     PhysicalNames = (s) => List.Transform(Names(s),each Physical(s,_)),
     NewAlias = (s) => List.First(List.Select(List.Transform({0..List.Count(Names(s))+1},each "__pq_column_" & Text.From(_)),each not List.Contains(PhysicalNames(s) & {s[Order]},_,Comparer.OrdinalIgnoreCase))),
     ClearIndex = (s) => Record.RemoveFields(s,{"PendingIndex"},MissingField.Ignore),
-    UnitsSql = (sql) => "CASE WHEN " & sql & " IS NULL THEN NULL ELSE flatten(list_transform(list_filter(string_split(" & sql & ",''), c -> c<>''), c -> CASE WHEN unicode(c)>65535 THEN [55296+((unicode(c)-65536)//1024),56320+((unicode(c)-65536)%1024)] ELSE [unicode(c)] END)) END",
+    UnitsSql = (sql) => "CASE WHEN " & sql & " IS NULL THEN NULL ELSE flatten(list_transform(list_filter(string_split(" & sql & ",''), lambda c: c<>''), lambda c: CASE WHEN unicode(c)>65535 THEN [55296+((unicode(c)-65536)//1024),56320+((unicode(c)-65536)%1024)] ELSE [unicode(c)] END)) END",
     ColumnValue = (s,n) => if Record.HasFields(s[Encodings],n) then "(" & Q(Physical(s,n)) & ").v" else Q(Physical(s,n)),
     NumericField = (s,n) => Type.Is(Record.Field(Type.RecordFields(RowType(s)),n)[Type],type nullable number),
     KeySql = (s,n) => let typ=Record.Field(Type.RecordFields(RowType(s)),n)[Type] in if NumericField(s,n) then "CAST(" & ColumnValue(s,n) & " AS DOUBLE)" else if dateScalar[Kind](typ)<>null then dateScalar[Key]([Value=ColumnValue(s,n),Type=typ,Encoding=Record.FieldOrDefault(s[Encodings],n,null)],each _[Value]) else ColumnValue(s,n),
@@ -50,9 +50,19 @@ let
     Node = (sql) => [Kind="Literal",Value=sql],
     ConstantNumberKind = (v) => try (if Value.Equals(v,Number.FromText(Number.ToText(v,"R","en-US"),"en-US"),Precision.Decimal) then "'decimal'" else "'double'") otherwise "'double'",
     ScalarKind = (n) => let t=Record.FieldOrDefault(n,"Type",type any) in if t=type null then "null" else if Type.Is(t,type nullable number) then "number" else if Type.Is(t,type nullable text) then "text" else if Type.Is(t,type nullable logical) then "logical" else if Type.Is(t,type nullable date) then "date" else if Type.Is(t,type nullable datetime) then "datetime" else if Type.Is(t,type nullable time) then "time" else if Type.Is(t,type nullable datetimezone) then "datetimezone" else "unknown",
+    RowMarker=RowExpression.From(each [__pq_marker__])[Expression][Function][Value],
+    RecordMembers=(a,rowType)=>
+        if a[Kind]="Invocation" and a[Function][Value]=RowMarker and List.IsEmpty(a[Arguments]) then List.Transform(Record.FieldNames(Type.RecordFields(rowType)),each [Kind="FieldAccess",MemberName=_])
+        else if a[Kind]="Invocation" and a[Function][Value]=Record.SelectFields and a[Arguments]{1}[Kind]="Constant" then
+            let members=@RecordMembers(a[Arguments]{0},rowType),names=a[Arguments]{1}[Value],mode=if List.Count(a[Arguments])>2 then a[Arguments]{2}[Value] else MissingField.Error,
+                selected=List.Transform(names,(n)=>let found=List.Select(members,each _[MemberName]=n) in if not List.IsEmpty(found) then found{0} else if mode=MissingField.Ignore then null else if mode=MissingField.UseNull then [Kind="Constant",Value=null] else error "The selected record field is absent.")
+            in List.RemoveNulls(selected)
+        else error "Record.FieldValues needs a represented row or static field projection.",
     Compile = (a, rowType, encodings, aliases) =>
         let k=a[Kind] in
         if k="Constant" then if InvalidUtf16(a[Value]) then Node(LiteralUnits(a[Value])) & [Type=type text,Encoding="utf16",Transport=true,ErrorSql="NULL"] else Node(L(a[Value])) & [Type=Value.Type(a[Value])] & (if a[Value] is number then [NumericKindSql=ConstantNumberKind(a[Value])] else if dateScalar[Kind](Value.Type(a[Value]))<>null then [TemporalLiteral=dateScalar[Literal](a[Value])] else [])
+        else if k="List" then textShape[MakeList](a[Members],each @Compile(_,rowType,encodings,aliases),Render,false)
+        else if k="ElementAccess" then textShape[Element](a,each @Compile(_,rowType,encodings,aliases),Render)
         else if k="FieldAccess" then
             if Record.HasFields(encodings,a[MemberName]) then
                 let physical=Record.FieldOrDefault(aliases,a[MemberName],a[MemberName]),raw="(q." & Q(physical) & ").v",encoding=Record.Field(encodings,a[MemberName])
@@ -62,6 +72,11 @@ let
                 in if nativeType="BOOLEAN" then Node("CAST(" & column & " AS VARCHAR)") & [Type=type nullable text,Transport=true,ErrorSql="NULL"]
                    else if nativeType="TIME" then Node("CAST(substr(CAST(" & column & " AS VARCHAR),1,8) AS TIME)") & [Type=typ,Transport=true,ErrorSql="NULL"]
                    else [Kind="Column",Name=Record.FieldOrDefault(aliases,a[MemberName],a[MemberName]),Type=typ,NumericKindSql=if nativeType="UBIGINT" then "'decimal'" else if List.Contains({24,53},precision) or scale=null then "'double'" else "'decimal'"]
+        else if k="Binary" and a[Operator]="Concatenate" then
+            let left=@Compile(a[Left],rowType,encodings,aliases),right=@Compile(a[Right],rowType,encodings,aliases),
+                l=textShape[Units](left,Render),r=textShape[Units](right,Render)
+            in if not (Type.Is(Record.FieldOrDefault(left,"Type",type any),type nullable text) and Type.Is(Record.FieldOrDefault(right,"Type",type any),type nullable text)) then error "A text concatenation requires text operands."
+               else Node("CASE WHEN " & l & " IS NULL OR " & r & " IS NULL THEN NULL ELSE list_concat(" & l & "," & r & ") END") & [Type=type nullable text,Encoding="utf16",Transport=true,ErrorSql="coalesce(" & Record.FieldOrDefault(left,"ErrorSql","NULL") & "," & Record.FieldOrDefault(right,"ErrorSql","NULL") & ")"]
         else if k="Binary" then
             let left=@Compile(a[Left],rowType,encodings,aliases),right=@Compile(a[Right],rowType,encodings,aliases),
                 op=Record.Field([Add="+",Subtract="-",Multiply="*",Divide="/",Equals="IS NOT DISTINCT FROM",NotEquals="IS DISTINCT FROM",LessThan="<",GreaterThan=">",LessThanOrEquals="<=",GreaterThanOrEquals=">=",And="AND",Or="OR"],a[Operator]),
@@ -110,7 +125,13 @@ let
                 encoded=List.AnyTrue(List.Transform(a[Arguments],each if _[Kind]="Constant" then false else Record.FieldOrDefault(visitor(_),"Transport",false))),
                 texts={Text.EndsWith,Text.Length,Text.Middle,Text.Range,Text.PositionOf,Text.PadStart,Text.PadEnd,Text.Trim,Text.TrimStart,Text.TrimEnd}
             in
-            if f=Value.Equals or f=Value.NullableEquals then equalityScalar(a,rowType,visitor,Render,roundScalar,dateScalar)
+            if f=Text.Combine and a[Arguments]{0}[Kind]="Invocation" and a[Arguments]{0}[Function][Value]=Record.FieldValues then
+                textShape[Compile](a & [Arguments={[Kind="List",Members=RecordMembers(a[Arguments]{0}[Arguments]{0},rowType)]} & List.Skip(a[Arguments],1)],visitor,Render)
+            else if List.Contains(textShape[Functions],f) then textShape[Compile](a,visitor,Render)
+            else if f=Text.From and Type.Is(Record.FieldOrDefault(visitor(a[Arguments]{0}),"Type",type any),type nullable text)
+                and (List.Count(a[Arguments])=1 or (a[Arguments]{1}[Kind]="Constant" and a[Arguments]{1}[Value]=null)) then
+                let n=visitor(a[Arguments]{0}) in Node(textShape[Units](n,Render)) & [Type=type nullable text,Encoding="utf16",Transport=true,ErrorSql=Record.FieldOrDefault(n,"ErrorSql","NULL")]
+            else if f=Value.Equals or f=Value.NullableEquals then equalityScalar(a,rowType,visitor,Render,roundScalar,dateScalar)
             else if List.Contains(dateScalar[Functions],f) then dateScalar[Compile](a,rowType,visitor,Render)
             else if f=Number.Round then roundScalar(a,rowType,visitor,Render)
             // Keep the native ODBC planner's existing literal Contains/StartsWith
@@ -122,20 +143,40 @@ let
             else if List.Contains(scalarVisitor[Functions],f) then scalarVisitor[Invocation](visitor,rowType,{},a)
             else if f=List.Sum then Node("SUM(" & Render(visitor(a[Arguments]{0})) & ")")
             else if List.Contains({List.Min,List.Max,List.Average},f) then Node((if f=List.Min then "MIN" else if f=List.Max then "MAX" else "AVG") & "(" & Render(visitor(a[Arguments]{0})) & ")")
+            else if f=List.Count and Record.FieldOrDefault(visitor(a[Arguments]{0}),"Encoding",null)="text-list" then
+                let xs=visitor(a[Arguments]{0}) in Node("len(" & Render(xs) & ")") & [Type=type number,Transport=true,ErrorSql=Record.FieldOrDefault(xs,"ErrorSql","NULL")]
+            else if List.Contains({List.First,List.Last},f) and List.Count(a[Arguments])=1 and Record.FieldOrDefault(visitor(a[Arguments]{0}),"Encoding",null)="text-list" then
+                let xs=visitor(a[Arguments]{0}),item=(if f=List.First then "list_first" else "list_last") & "(" & Render(xs) & ")"
+                in Node("(" & item & ").v") & [Type=type nullable text,Encoding="utf16",Transport=true,ErrorSql="coalesce(" & Record.FieldOrDefault(xs,"ErrorSql","NULL") & ",(" & item & ").e)"]
             else if f=Table.RowCount then Node("COUNT(*)")
             else error "Unsupported M invocation in relational expression."
         else error "Unsupported M expression in relational plan.",
-    Expr = (fn,s) => Compile(RowExpression.From(fn),RowType(s),s[Encodings],s[Aliases]),
+    Expression = (fn)=>let direct=try RowExpression.From(fn),
+        full=()=>let ast=Value.Expression(Value.Optimize(fn)),parameters=ast[FunctionType][Parameters],parameter=parameters{0}[Identifier],
+            Walk=(n)=>if n[Kind]="FieldAccess" then
+                    if n[Expression][Kind]<>"Identifier" or n[Expression][Name]<>parameter or Record.FieldOrDefault(n,"IsOptional",false) then error "Only direct required row fields are SQL columns." else n
+                else if n[Kind]="Invocation" then n & [Arguments=List.Transform(n[Arguments],each @Walk(_))]
+                else if n[Kind]="Binary" then n & [Left=@Walk(n[Left]),Right=@Walk(n[Right])]
+                else if n[Kind]="If" then n & [Condition=@Walk(n[Condition]),TrueCase=@Walk(n[TrueCase]),FalseCase=@Walk(n[FalseCase])]
+                else if n[Kind]="List" then n & [Members=List.Transform(n[Members],each @Walk(_))]
+                else if n[Kind]="ElementAccess" then n & [Collection=@Walk(n[Collection]),Key=@Walk(n[Key])]
+                else if n[Kind]="Constant" then n else error "The optimized M expression requires an additional SQL representation."
+            in if ast[Kind]<>"Function" or List.Count(parameters)<>1 then error "A row expression requires one parameter." else Walk(ast[Expression])
+        in if not direct[HasError] then direct[Value] else full(),
+    Expr = (fn,s) => Compile(Expression(fn),RowType(s),s[Encodings],s[Aliases]),
     HasAdvanced = (a) =>
         if a[Kind]="Invocation" then
             let f=a[Function][Value] in
-            (List.Contains({Text.Middle,Text.Range,Number.Round,Value.Equals,Value.NullableEquals},f)) or List.Contains(dateScalar[Functions],f)
+            (List.Contains({Text.Middle,Text.Range,Number.Round,Value.Equals,Value.NullableEquals},f)) or List.Contains(dateScalar[Functions],f) or List.Contains(textShape[Functions],f)
             or (f=Text.PositionOf and List.Count(a[Arguments])>2)
             or (f=Text.EndsWith and List.Count(a[Arguments])>2)
             or (List.Contains({Text.EndsWith,Text.Length,Text.PositionOf},f) and List.AnyTrue(List.Transform(a[Arguments],each _[Kind]="Constant" and InvalidUtf16(_[Value]))))
             or List.Contains({Text.PadStart,Text.PadEnd,Text.Trim,Text.TrimStart,Text.TrimEnd},f)
             or List.AnyTrue(List.Transform(a[Arguments],each @HasAdvanced(_)))
-        else if a[Kind]="Binary" then @HasAdvanced(a[Left]) or @HasAdvanced(a[Right])
+        else if a[Kind]="Binary" then a[Operator]="Concatenate" or @HasAdvanced(a[Left]) or @HasAdvanced(a[Right])
+        else if a[Kind]="If" then @HasAdvanced(a[Condition]) or @HasAdvanced(a[TrueCase]) or @HasAdvanced(a[FalseCase])
+        else if a[Kind]="List" then true
+        else if a[Kind]="ElementAccess" then @HasAdvanced(a[Collection]) or @HasAdvanced(a[Key])
         else false,
     NativeError=(fn)=>(try fn())[Error],
     ErrorTemplates=List.Buffer({NativeError(()=>Text.Middle("x",-1)),NativeError(()=>Text.Range("x",2)),NativeError(()=>Text.Range("x",0,2)),
@@ -154,7 +195,8 @@ let
                 else if payload[k]="m-time" then Time.FromText(payload[d],[Culture="en-US"])
                 else if payload[k]="m-binary" then Binary.FromText(payload[d],BinaryEncoding.Hex)
                 else payload[d]
-        in if List.IsEmpty(matches) then Error.Record("Expression.Error",payload[m],detail) else matches{0} & [Detail=detail],
+        in if List.Contains({"shape-type","shape-index"},payload[k]) then textShape[RestoreError](payload,@RestoreError)
+           else if List.IsEmpty(matches) then Error.Record("Expression.Error",payload[m],detail) else matches{0} & [Detail=detail],
     Decode = (t,typ,encodings,aliases,rowError) =>
         let fs=Fields(typ), ns=Record.FieldNames(fs),
             ops=List.Transform(ns,(n)=>{n,(v)=>
@@ -163,6 +205,7 @@ let
                     decoded=if encoded and payload[e]<>null then error RestoreError(payload[e])
                             else if encoded and Record.Field(encodings,n)="utf16" and value<>null then Json.Document(value)
                             else if encoded and Record.Field(encodings,n)="json" and value<>null then Json.Document(value)
+                            else if encoded and Record.Field(encodings,n)="text-list" and value<>null then textShape[DecodeList](value,RestoreError)
                             else if encoded and Record.Field(encodings,n)="logical" and value<>null then Logical.From(value)
                             else if encoded and List.Contains({"date","datetime","datetimezone"},Record.Field(encodings,n)) and value<>null then dateScalar[Decode](value,Record.Field(encodings,n))
                             else if encoded and Record.Field(encodings,n)="number" and value<>null then
@@ -181,11 +224,11 @@ let
     FinalSql = (s) => "SELECT " & (if List.IsEmpty(Names(s)) then "1 AS __pq_empty_row" else Text.Combine(List.Transform(Names(s),(logical)=>let n=Physical(s,logical) in
         (if Record.HasFields(s[Encodings],logical) then
             "CAST(to_json(" & (if Record.Field(s[Encodings],logical)="utf16" then
-                "struct_pack(v := CASE WHEN (" & Q(n) & ").v IS NULL THEN NULL ELSE chr(34) || coalesce(array_to_string(list_transform((" & Q(n) & ").v, x -> '\u' || lpad(to_hex(x),4,'0')),''),'') || chr(34) END, e := (" & Q(n) & ").e)"
+                "struct_pack(v := CASE WHEN (" & Q(n) & ").v IS NULL THEN NULL ELSE chr(34) || coalesce(array_to_string(list_transform((" & Q(n) & ").v, lambda x: '\u' || lpad(to_hex(x),4,'0')),''),'') || chr(34) END, e := (" & Q(n) & ").e)"
                 else Q(n)) & ") AS VARCHAR)"
          else Q(n)) & " AS " & Q(n)),", ")) &
         ", " & Q(s[RowError]) & " FROM (" & s[Sql] & ") AS q ORDER BY " & Q(s[Order]),
-    Add = (s,name,fn,colType)=>            let ast=RowExpression.From(fn),node=Compile(ast,RowType(s),s[Encodings],s[Aliases]), typ=Value.Type(Table.AddColumn(#table(s[Type],{}),name,fn,colType)),physical=NewAlias(s),
+    Add = (s,name,fn,colType)=>            let ast=Expression(fn),node=Compile(ast,RowType(s),s[Encodings],s[Aliases]), typ=Value.Type(Table.AddColumn(#table(s[Type],{}),name,fn,colType)),physical=NewAlias(s),
                 temporalKind=dateScalar[Kind](Record.FieldOrDefault(node,"Type",type any)),
                 transport=s[Own] or Record.FieldOrDefault(node,"Transport",false) or temporalKind<>null,
                 numeric=Type.Is(Record.FieldOrDefault(node,"Type",type any),type nullable number),
@@ -219,7 +262,7 @@ let
                 sql="SELECT " & Columns(PhysicalNames(s) & {s[RowError]}) & ", ROW_NUMBER() OVER (ORDER BY " & Q(s[RowError]) & " IS NULL, " & ordering & ", " & Q(s[Order]) & ") AS " & Q(s[Order]) & " FROM (" & s[Sql] & ") AS q"
             in @View(ClearIndex(s) & [Native=Table.Sort(s[Native],List.Transform(criteria,each {_[Name],_[Order]})),Sql=sql]),
         OnSelectRows=(fn)=>
-            let attempted=try (let ast=RowExpression.From(fn), node=Compile(ast,RowType(s),s[Encodings],s[Aliases]),
+            let attempted=try (let ast=Expression(fn), node=Compile(ast,RowType(s),s[Encodings],s[Aliases]),
                 err=Record.FieldOrDefault(node,"ErrorSql","NULL"),
                 sql="SELECT * EXCLUDE(" & Q(s[RowError]) & "), coalesce(" & Q(s[RowError]) & "," & err & ") AS " & Q(s[RowError]) & " FROM (" & s[Sql] & ") AS q WHERE CASE WHEN " & Q(s[RowError]) & " IS NOT NULL OR " & err & " IS NOT NULL THEN TRUE ELSE " & Render(node) & " END"
             in if Text.Length(sql)<0 then error "Invalid SQL plan." else @View(ClearIndex(s) & [Native=Table.SelectRows(s[Native],fn),Sql=sql,MayRowError=s[MayRowError] or Record.FieldOrDefault(node,"Transport",false),Own=s[Own] or HasAdvanced(ast) or Record.FieldOrDefault(node,"Transport",false)]))
@@ -248,7 +291,8 @@ let
                 sql="SELECT " & Columns(PhysicalNames(s) & {s[Order],s[RowError]}) & " FROM (SELECT *, ROW_NUMBER() OVER (PARTITION BY " & Text.Combine(List.Transform(keys,each KeySql(s,_)) & NaNKey(s,keys) & {"CASE WHEN " & Q(s[RowError]) & " IS NOT NULL THEN " & Q(s[Order]) & " ELSE 0 END"},", ") & " ORDER BY " & Q(s[Order]) & ") AS " & Q(duplicate) & " FROM (" & s[Sql] & ") AS q) AS d WHERE " & Q(duplicate) & "=1"
             in @View(ClearIndex(s) & [Native=Table.Distinct(s[Native],keys),Sql=sql]),
         OnInvoke=(fn,args,index)=>
-            if fn=Table.AddIndexColumn and index=0 then
+            if fn=Table.AddColumn and index=0 then @View(Add(s,args{1},args{2},if List.Count(args)>3 then args{3} else type any))
+            else if fn=Table.AddIndexColumn and index=0 then
                 let name=args{1},start=if List.Count(args)<3 or args{2}=null then 0 else args{2},step=if List.Count(args)<4 or args{3}=null then 1 else args{3},
                     columnType=if List.Count(args)<5 or args{4}=null then Int64.Type else args{4},
                     typ=Value.Type(Table.AddIndexColumn(#table(s[Type],{}),name,start,step,columnType)),

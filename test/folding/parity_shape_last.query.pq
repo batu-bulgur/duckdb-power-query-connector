@@ -1,0 +1,1 @@
+let s=DuckDB.Contents("__DB_PATH__",null,true,false,"single",[custom_user_agent="gui-shape"]),t=Table.SelectRows(s{[Item="gui_text_base"]}[Data],each [id]=16),a=Table.AddColumn(t,"value",each List.Last(Text.Split([label],"--")),type nullable text) in Table.SelectColumns(a,{"id","value"})

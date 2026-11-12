@@ -1,0 +1,1 @@
+let t=#table(type table[id=number,label=nullable text,other_label=nullable text],{{1,"a😀b","B"}}),a=Table.AddColumn(t,"value",each Text.Replace([label],Text.Start("😀",1),"#(0000)"),type nullable text) in Table.SelectColumns(a,{"id","value"})

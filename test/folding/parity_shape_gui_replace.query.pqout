@@ -1,0 +1,1 @@
+#table(type table[id=number,label=nullable text],{{1,"aXb"}})

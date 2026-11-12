@@ -28,5 +28,26 @@
       "date_value",
       "safe_target"
     ]
+  },
+  {
+    "name": "shape_element_access",
+    "maxRows": 352,
+    "sqlPatterns": [
+      "shape_element"
+    ]
+  },
+  {
+    "name": "shape_gui_split",
+    "maxRows": 1,
+    "sqlPatterns": [
+      "shape_parts"
+    ]
+  },
+  {
+    "name": "shape_dynamic_list",
+    "maxRows": 16,
+    "sqlPatterns": [
+      "shape_combine"
+    ]
   }
 ]

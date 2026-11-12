@@ -1,5 +1,5 @@
 // This file contains your Data Connector logic
-[Version = "0.5.0"]
+[Version = "0.6.0"]
 section DuckDB;
 
 // When set to true, additional trace information will be written out to the User log.
@@ -188,7 +188,7 @@ shared DuckDB.Contents = (
             Options
         ),
         RelationalDatasource = DuckDB.RelationalFolding(ConnectionString, OdbcDatasource, DuckDB.ScalarAstVisitor,
-            (a,t,c,r)=>DuckDB.AdvancedScalar(a,t,c,r,DuckDB.OrdinalIgnoreCase), DuckDB.RoundScalar, DuckDB.EqualityScalar, DuckDB.IndexSql, DuckDB.DateScalar),
+            (a,t,c,r)=>DuckDB.AdvancedScalar(a,t,c,r,DuckDB.OrdinalIgnoreCase), DuckDB.RoundScalar, DuckDB.EqualityScalar, DuckDB.IndexSql, DuckDB.DateScalar, DuckDB.TextShape(DuckDB.DateScalar)),
         // Value.NativeQuery support. EnableFolding is ignored: transforms evaluate client-side.
         NativeQueryView = Table.View(RelationalDatasource, [
             OnNativeQuery = (query, parameters, queryOptions) =>
@@ -640,6 +640,7 @@ DuckDB.RelationalFolding = Extension.LoadFunction("RelationalFolding.pqm");
 DuckDB.AdvancedScalar = Extension.LoadFunction("AdvancedScalar.pqm");
 DuckDB.RoundScalar = Extension.LoadFunction("RoundScalar.pqm");
 DuckDB.DateScalar = Extension.LoadFunction("DateScalar.pqm");
+DuckDB.TextShape = Extension.LoadFunction("TextShape.pqm");
 DuckDB.EqualityScalar = Extension.LoadFunction("EqualityScalar.pqm");
 DuckDB.OrdinalIgnoreCase = Extension.LoadFunction("OrdinalIgnoreCase.pqm");
 DuckDB.IndexSql = Extension.LoadFunction("IndexSql.pqm");

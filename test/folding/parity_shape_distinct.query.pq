@@ -1,0 +1,1 @@
+let s=DuckDB.Contents("__DB_PATH__",null,true,false,"single",[custom_user_agent="shape-distinct"]),t=s{[Item="gui_text_base"]}[Data],a=Table.AddColumn(t,"prefix",each Text.Start([label],1),type nullable text) in Table.Sort(Table.Distinct(Table.SelectColumns(a,{"prefix"})),{{"prefix",Order.Ascending}})

@@ -108,6 +108,23 @@ FROM gui_date_base b
 CROSS JOIN (SELECT unnest([NULL,-2147483649,-2147483648,-365,-31,-1,0,1,2,31,365,1.5,1.0000000000000002,2147483647,2147483648,'NaN'::DOUBLE,'Infinity'::DOUBLE]::DOUBLE[]) AS delta) n
 CROSS JOIN (SELECT unnest([NULL,0,1,2,3,4,5,6,-1,7,1.5]::DOUBLE[]) AS first_day) w;
 UPDATE gui_date_matrix SET dt_ns=make_timestamp_ns(epoch_ns(dt_ns)+700) WHERE dt_ns IS NOT NULL;
+CREATE TABLE gui_text_base(id INTEGER,label VARCHAR,other_label VARCHAR);
+INSERT INTO gui_text_base VALUES
+ (1,'a😀b','B'),(2,'aaaaa','aa'),(3,'',''),(4,NULL,NULL),(5,',a,,b,','x'),
+ (6,'ababa','aba'),(7,'İıIişŞ','İ'),(8,'a'||chr(0)||'b',chr(0)),
+ (9,chr(9)||chr(160)||' x '||chr(10),NULL),(10,'😀😀b','😀'),
+ (11,'e'||chr(769)||'é','e'),(12,'a"b''c\d%_','"'),
+ (13,chr(65535)||chr(57344),'z'),(14,'x'||chr(1)||'😀'||chr(1)||'z',chr(1)),
+ (15,'aaabaaa','aaa'),(16,'abc--def--','--');
+CREATE TABLE gui_text_extract AS
+SELECT row_number() OVER ()::INTEGER AS id,b.id AS base_id,b.label,b.other_label,n.n
+FROM gui_text_base b CROSS JOIN
+ (SELECT unnest([NULL,-2147483649,-2147483648,-9,-1,-0.5,0,0.5,1,1.5,2,3,4,5,8,64,2147483647,2147483648,'NaN'::DOUBLE,'Infinity'::DOUBLE,'-Infinity'::DOUBLE,1.0000000000000002]::DOUBLE[]) AS n) n;
+CREATE TABLE gui_text_replace AS
+SELECT row_number() OVER ()::INTEGER AS id,b.id AS base_id,b.label,b.other_label,p.id AS pattern_id,p.needle,r.id AS replacement_id,r.replacement
+FROM gui_text_base b CROSS JOIN
+ (SELECT row_number() OVER ()::INTEGER AS id,unnest([NULL,'','a','aa','aaa','aba',',','--','😀',chr(0),chr(1),'İ','not-found','half-high','half-low']) AS needle) p CROSS JOIN
+ (SELECT row_number() OVER ()::INTEGER AS id,unnest([NULL,'','X','😀',chr(0),',','half-high','half-low']) AS replacement) r;
 '@
     [void]$command.ExecuteNonQuery()
     $ordinalMap=(Get-Content (Join-Path (Split-Path $PSScriptRoot) 'OrdinalIgnoreCase.pqm') | Select-Object -Last 1).Trim().Trim('"')
@@ -132,6 +149,10 @@ UPDATE gui_date_matrix SET dt_ns=make_timestamp_ns(epoch_ns(dt_ns)+700) WHERE dt
     }
     $command.CommandText='SELECT count(*) FROM gui_date_matrix'
     if($command.ExecuteScalar() -ne 2244){throw 'Date matrix fixture count mismatch.'}
+    foreach($entry in @(@('gui_text_extract',352),@('gui_text_replace',1920))){
+        $command.CommandText='SELECT count(*) FROM '+$entry[0]
+        if($command.ExecuteScalar() -ne $entry[1]){throw 'Text-shaping matrix fixture count mismatch.'}
+    }
     [pscustomobject]@{ Engine=$version; Rows=1000000; Database=$DatabasePath }
 } finally {
     if ($command) { $command.Dispose() }

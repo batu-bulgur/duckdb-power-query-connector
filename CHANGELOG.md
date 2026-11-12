@@ -6,6 +6,7 @@ The connector metadata and VERSION file contain the same numeric version.
 
 | Version | Changes and validated folding scope |
 | --- | --- |
+| [0.6.0](docs/release-notes/0.6.0.md) | GUI text extraction, replacement, splitting and combining with UTF-16/error parity and strict SQL/ODBC coverage |
 | [0.5.0](docs/release-notes/0.5.0.md) | Eight GUI date targets with kind/precision/offset preservation and M/SQL/ODBC regressions |
 | [0.4.0](docs/release-notes/0.4.0.md) | First 14 scalar/index targets: UTF-16 text, rounding/equality, normal error transport, ordered SQL index plans, M inventory and exhaustive parallel regression verification; SDK/culture/host limits remain explicit |
 | [0.3.0](docs/release-notes/0.3.0.md) | Initial fork release: pagination, text/Unicode fixes, native EndsWith, sample standard deviation, headless correctness/SQL/row guards and automated versioned releases |

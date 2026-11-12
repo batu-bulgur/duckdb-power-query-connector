@@ -1,0 +1,1 @@
+let s=DuckDB.Contents("__DB_PATH__",null,true,false,"single",[custom_user_agent="shape-million"]),t=s{[Item="unicode_folding"]}[Data] in Table.SelectColumns(Table.SelectRows(t,each Text.Start([label],1)="İ"),{"id"})

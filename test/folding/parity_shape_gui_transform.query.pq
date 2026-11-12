@@ -1,0 +1,1 @@
+let s=DuckDB.Contents("__DB_PATH__",null,true,false,"single",[custom_user_agent="shape-gui"]),t=Table.SelectRows(s{[Item="gui_text_base"]}[Data],each [id]=1),a=Table.TransformColumns(t,{{"label",each Text.Start(_,1),type nullable text}}) in Table.SelectColumns(a,{"id","label"})

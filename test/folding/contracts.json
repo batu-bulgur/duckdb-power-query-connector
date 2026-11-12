@@ -1633,5 +1633,223 @@
     "forbiddenPatterns": [
       "\\{\\s*fn\\b"
     ]
+  },
+  {
+    "name": "parity_shape_start",
+    "maxRows": 1,
+    "sqlPatterns": [
+      "shape_extract",
+      "list_slice",
+      "WHERE"
+    ]
+  },
+  {
+    "name": "parity_shape_end",
+    "maxRows": 1,
+    "sqlPatterns": [
+      "shape_extract",
+      "list_slice"
+    ]
+  },
+  {
+    "name": "parity_shape_replace",
+    "maxRows": 1,
+    "sqlPatterns": [
+      "shape_parts",
+      "list_reduce"
+    ]
+  },
+  {
+    "name": "parity_shape_split",
+    "maxRows": 1,
+    "sqlPatterns": [
+      "shape_parts",
+      "list_reduce"
+    ]
+  },
+  {
+    "name": "parity_shape_combine_split",
+    "maxRows": 1,
+    "sqlPatterns": [
+      "shape_combine",
+      "shape_parts"
+    ]
+  },
+  {
+    "name": "parity_shape_combine_constant",
+    "maxRows": 1,
+    "sqlPatterns": [
+      "shape_combine",
+      "list_filter"
+    ]
+  },
+  {
+    "name": "parity_shape_combine_optimized",
+    "maxRows": 1,
+    "sqlPatterns": [
+      "list_concat",
+      "WHERE"
+    ]
+  },
+  {
+    "name": "parity_shape_combine_plain",
+    "maxRows": 1,
+    "sqlPatterns": [
+      "list_concat",
+      "\"__pq_column_0\""
+    ]
+  },
+  {
+    "name": "parity_shape_gui_combine",
+    "maxRows": 1,
+    "sqlPatterns": [
+      "list_concat",
+      "WHERE"
+    ]
+  },
+  {
+    "name": "parity_shape_gui_replace",
+    "maxRows": 1,
+    "sqlPatterns": [
+      "shape_parts",
+      "list_reduce"
+    ]
+  },
+  {
+    "name": "parity_shape_gui_transform",
+    "maxRows": 1,
+    "sqlPatterns": [
+      "shape_extract",
+      "list_slice"
+    ]
+  },
+  {
+    "name": "parity_shape_start_half",
+    "maxRows": 1,
+    "sqlPatterns": [
+      "shape_extract",
+      "list_slice"
+    ]
+  },
+  {
+    "name": "parity_shape_end_half",
+    "maxRows": 1,
+    "sqlPatterns": [
+      "shape_extract",
+      "list_slice"
+    ]
+  },
+  {
+    "name": "parity_shape_replace_half",
+    "maxRows": 1,
+    "sqlPatterns": [
+      "shape_parts",
+      "list_reduce"
+    ]
+  },
+  {
+    "name": "parity_shape_split_half",
+    "maxRows": 1,
+    "sqlPatterns": [
+      "shape_parts",
+      "list_reduce"
+    ]
+  },
+  {
+    "name": "parity_shape_replace_empty",
+    "maxRows": 1,
+    "sqlPatterns": [
+      "shape_parts"
+    ]
+  },
+  {
+    "name": "parity_shape_split_empty",
+    "maxRows": 1,
+    "sqlPatterns": [
+      "shape_parts"
+    ]
+  },
+  {
+    "name": "parity_shape_combine_nulls",
+    "maxRows": 1,
+    "sqlPatterns": [
+      "shape_combine"
+    ]
+  },
+  {
+    "name": "parity_shape_combine_empty",
+    "maxRows": 1,
+    "sqlPatterns": [
+      "shape_combine"
+    ]
+  },
+  {
+    "name": "parity_shape_first",
+    "maxRows": 1,
+    "sqlPatterns": [
+      "shape_parts",
+      "list_first"
+    ]
+  },
+  {
+    "name": "parity_shape_last",
+    "maxRows": 1,
+    "sqlPatterns": [
+      "shape_parts",
+      "list_last"
+    ]
+  },
+  {
+    "name": "parity_shape_million",
+    "maxRows": 1,
+    "sqlPatterns": [
+      "shape_extract",
+      "list_slice",
+      "WHERE"
+    ]
+  },
+  {
+    "name": "parity_shape_group",
+    "maxRows": 10,
+    "sqlPatterns": [
+      "shape_extract",
+      "GROUP BY",
+      "COUNT\\("
+    ]
+  },
+  {
+    "name": "parity_shape_distinct",
+    "maxRows": 10,
+    "sqlPatterns": [
+      "shape_extract",
+      "PARTITION BY"
+    ]
+  },
+  {
+    "name": "parity_shape_index",
+    "maxRows": 3,
+    "sqlPatterns": [
+      "shape_extract",
+      "ROW_NUMBER",
+      "pq_index"
+    ]
+  },
+  {
+    "name": "parity_shape_pipeline",
+    "maxRows": 1,
+    "sqlPatterns": [
+      "shape_extract",
+      "shape_parts",
+      "list_concat"
+    ]
+  },
+  {
+    "name": "parity_shape_overlap_rows",
+    "maxRows": 24,
+    "sqlPatterns": [
+      "shape_parts",
+      "positions",
+      "list_reduce"
+    ]
   }
 ]

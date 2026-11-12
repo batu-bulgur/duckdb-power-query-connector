@@ -1,0 +1,110 @@
+// All positions and matching operate on UTF-16 units, including isolated
+// surrogates and NUL. The client only restores values and native error records.
+(dateScalar as record) as record =>
+let
+    Functions={Text.Start,Text.End,Text.Replace,Text.Split,Text.Combine},
+    S=(v)=>"'" & Text.Replace(v,"'","''") & "'",
+    N=(v,t,encoding,e)=>[Kind="Literal",Value=v,Type=t,Encoding=encoding,ErrorSql=e,Transport=true],
+    E=(n)=>Record.FieldOrDefault(n,"ErrorSql","NULL"),
+    Co=(xs)=>"coalesce(" & Text.Combine(xs & {"NULL"},",") & ")",
+    IsText=(n)=>Type.Is(Record.FieldOrDefault(n,"Type",type any),type nullable text),
+    IsNumber=(n)=>Type.Is(Record.FieldOrDefault(n,"Type",type any),type nullable number),
+    IsNull=(n,r)=>if Record.HasFields(n,"StaticValue") then (if n[StaticValue]=null then "TRUE" else "FALSE") else r(n) & " IS NULL",
+    UnitJson=(sql)=>"chr(34)||coalesce(array_to_string(list_transform(" & sql & ", lambda x: '\u'||lpad(to_hex(x),4,'0')),''),'')||chr(34)",
+    Unit=(c)=>try Character.ToNumber(c) otherwise let b=Binary.ToList(Binary.FromText(Text.Range(Text.FromBinary(Json.FromValue(c)),3,4),BinaryEncoding.Hex)) in b{0}*256+b{1},
+    LiteralUnits=(v)=>"[" & Text.Combine(List.Transform(Text.ToList(v),each Text.From(Unit(_),"en-US")),",") & "]::BIGINT[]",
+    Units=(n,r)=>if not IsText(n) then "NULL::BIGINT[]" else if Record.FieldOrDefault(n,"Encoding",null)="utf16" then r(n)
+        else if Record.HasFields(n,"TextLiteral") then LiteralUnits(n[TextLiteral])
+        else "CASE WHEN " & r(n) & " IS NULL THEN NULL ELSE flatten(list_transform(list_filter(string_split(" & r(n) & ",''),lambda c: c<>''),lambda c: CASE WHEN unicode(c)>65535 THEN [55296+((unicode(c)-65536)//1024),56320+((unicode(c)-65536)%1024)] ELSE [unicode(c)] END)) END",
+    StaticTag=(v)=>if v=null then [t="null",v=null] else if v is text then [t="text",v=Text.FromBinary(Json.FromValue(v))]
+        else if v is number then [t=if (try Value.Equals(v,Number.FromText(Number.ToText(v,"R","en-US"),"en-US"),Precision.Decimal) otherwise false) then "number" else "double",v=Number.ToText(v,"R","en-US")]
+        else if v is logical then [t="logical",v=if v then "true" else "false"] else if v is binary then [t="binary",v=Binary.ToText(v,BinaryEncoding.Hex)]
+        else if v is time then [t="time",v=Time.ToText(v,[Format="HH:mm:ss.fffffff",Culture="en-US"])]
+        else if dateScalar[Kind](Value.Type(v))<>null then [t=dateScalar[Kind](Value.Type(v)),v=dateScalar[Literal](v)]
+        else if v is list then [t="static-list",v=List.Transform(v,each @StaticTag(_))]
+        else if v is record then [t="record",v=Record.TransformFields(v,List.Transform(Record.FieldNames(v),(k)=>{k,each @StaticTag(_)}))]
+        else error "This M value cannot be serialized as a native type-error detail.",
+    Tag=(n,r)=>let t=Record.FieldOrDefault(n,"Type",type any),raw=Record.FieldOrDefault(n,"RawValueSql",r(n)),kind=dateScalar[Kind](t),
+        tag=if IsNumber(n) then "CASE WHEN " & Record.FieldOrDefault(n,"NumericKindSql","'double'") & "='decimal' THEN 'number' ELSE 'double' END" else S(if IsText(n) then "text" else if Type.Is(t,type nullable logical) then "logical" else if Type.Is(t,type nullable binary) then "binary" else if Type.Is(t,type nullable time) then "time" else if kind<>null then kind else if Record.FieldOrDefault(n,"Encoding",null)="text-list" then "text-list" else "json"),
+        v=if IsText(n) then UnitJson(Units(n,r)) else if kind<>null then dateScalar[Format](n,r) else if Type.Is(t,type nullable binary) then "hex(" & raw & ")" else if Record.FieldOrDefault(n,"Encoding",null)="text-list" then "CAST(to_json(" & raw & ") AS VARCHAR)" else "CAST(" & raw & " AS VARCHAR)"
+        in if Record.HasFields(n,"StaticValue") then S(Text.FromBinary(Json.FromValue(StaticTag(n[StaticValue]))))
+           else "CAST(to_json(struct_pack(t := CASE WHEN " & IsNull(n,r) & " THEN 'null' ELSE " & tag & " END,v := " & v & ")) AS VARCHAR)",
+    TypedError=(n,target,nullable,allowNull,r)=>
+        let valid=if target="text" then IsText(n) else if target="number" then IsNumber(n) else Type.Is(Record.FieldOrDefault(n,"Type",type any),type list),
+            condition=if valid then (if allowNull then "FALSE" else IsNull(n,r)) else if allowNull then "NOT (" & IsNull(n,r) & ")" else "TRUE"
+        in "CASE WHEN " & condition & " THEN CAST(to_json(struct_pack(k := 'shape-type',m := '',d := " & Tag(n,r) & ",target := " & S(target & (if nullable then "?" else "")) & ")) AS VARCHAR) ELSE NULL END",
+    Err=(condition,message,detail,kind)=>"CASE WHEN " & condition & " THEN CAST(to_json(struct_pack(m := " & S(message) & ",d := " & detail & ",k := " & kind & ")) AS VARCHAR) ELSE NULL END",
+    IntError=(n,sql,r)=>let raw=Record.FieldOrDefault(n,"RawValueSql",r(n)),nk=Record.FieldOrDefault(n,"NumericKindSql","'double'"),encoded=Record.FieldOrDefault(n,"Encoding",null)="number",
+        exact="(SELECT rtrim(digits,'0')='' OR scale<=0 OR length(digits)-length(rtrim(digits,'0'))>=scale FROM (SELECT replace(replace(mantissa,'-',''),'.','') AS digits,CASE WHEN contains(mantissa,'.') THEN length(split_part(mantissa,'.',2)) ELSE 0 END-exponent AS scale FROM (SELECT split_part(lower(v),'e',1) AS mantissa,coalesce(TRY_CAST(nullif(split_part(lower(v),'e',2),'') AS INTEGER),0) AS exponent FROM (SELECT " & raw & " AS v) AS shape_raw) AS shape_parts) AS shape_integer)",
+        ordinary="NOT isfinite(" & sql & ") OR " & sql & "<>trunc(" & sql & ") OR " & sql & " NOT BETWEEN -2147483648 AND 2147483647",
+        invalid=if encoded then "CASE WHEN " & nk & "='decimal' THEN NOT " & exact & " OR " & sql & " NOT BETWEEN -2147483648 AND 2147483647 ELSE " & ordinary & " END" else ordinary
+        in Err(invalid,"The number is out of range of a 32 bit integer value.",if encoded then raw else "CAST(" & sql & " AS VARCHAR)","CASE WHEN " & nk & "='decimal' THEN 'number' ELSE 'double' END"),
+    Arg=(a,c)=>if a[Kind]="Constant" then
+        if a[Value] is text then [Kind="Literal",Value=LiteralUnits(a[Value]),Type=type text,Encoding="utf16",TextLiteral=a[Value],StaticValue=a[Value]]
+        else if a[Value] is list or a[Value] is record then [Kind="Literal",Value="NULL",Type=Value.Type(a[Value]),StaticValue=a[Value]] else c(a)
+        else c(a),
+    MakeList=(members,c,r,conversion)=>
+        let nodes=List.Transform(members,each Arg(_,c)),valid=List.AllTrue(List.Transform(nodes,each IsText(_))),
+            items=List.Transform(nodes,(n)=>"struct_pack(v := " & Units(n,r) & ",e := CAST(" & Co({E(n),if conversion then TypedError(n,"text",false,true,r) else "NULL"}) & " AS VARCHAR))")
+        in if not conversion and not valid then error "A non-text list requires a tagged heterogeneous list representation."
+           else N("[" & Text.Combine(items,",") & "]::STRUCT(v BIGINT[],e VARCHAR)[]",type list,"text-list","NULL"),
+    ListArg=(a,c,r)=>if a[Kind]="List" then MakeList(a[Members],c,r,true) else if a[Kind]="Constant" and a[Value] is list then MakeList(List.Transform(a[Value],each [Kind="Constant",Value=_]),c,r,true) else Arg(a,c),
+    Compile=(ast,c,r)=>let f=ast[Function][Value],args=ast[Arguments],ns=List.Transform(args,each Arg(_,c)),
+        a=ns{0},b=if List.Count(ns)>1 then ns{1} else [Kind="Literal",Value="NULL",Type=type null],
+        Sig=(n,target,nullable,allowNull)=>Co({E(n),TypedError(n,target,nullable,allowNull,r)}),
+        scalar=
+        if f=Text.Start or f=Text.End then
+            let n=if IsNumber(b) then "CAST(" & r(b) & " AS DOUBLE)" else "NULL::DOUBLE",inputs="SELECT " & Units(a,r) & " AS t," & n & " AS n",
+                signature=Co({Sig(a,"text",true,true),Sig(b,"number",false,false)}),
+                detail=Record.FieldOrDefault(b,"RawValueSql","CAST(n AS VARCHAR)"),kind="CASE WHEN " & Record.FieldOrDefault(b,"NumericKindSql","'double'") & "='decimal' THEN 'number' ELSE 'double' END",
+                e=Co({signature,"CASE WHEN t IS NULL THEN NULL ELSE " & Co({IntError(b,"n",r),Err("n<0","The 'count' argument is out of range.",detail,kind)}) & " END"}),
+                value="CASE WHEN t IS NULL OR " & e & " IS NOT NULL THEN NULL ELSE list_slice(t," & (if f=Text.Start then "1,least(TRY_CAST(n AS BIGINT),len(t))" else "greatest(len(t)-TRY_CAST(n AS BIGINT)+1,1),len(t)") & ") END"
+            in N("(SELECT " & value & " FROM (" & inputs & ") AS shape_extract)",type nullable text,"utf16","(SELECT " & e & " FROM (" & inputs & ") AS shape_error)")
+        else if f=Text.Replace or f=Text.Split then
+            let replacement=if f=Text.Replace then ns{2} else [Kind="Literal",Value="NULL",Type=type null],
+                signature=Co({Sig(a,"text",f=Text.Replace,f=Text.Replace),Sig(b,"text",false,false),if f=Text.Replace then Sig(replacement,"text",false,false) else "NULL"}),
+                inputs="SELECT " & Units(a,r) & " AS t," & Units(b,r) & " AS p," & (if f=Text.Replace then Units(replacement,r) else "NULL::BIGINT[]") & " AS replacement",
+                hits="list_filter(range(0,CASE WHEN len(p)=0 THEN 0 ELSE greatest(len(t)-len(p)+1,0) END),lambda i: list_slice(t,i+1,i+len(p))=p)",
+                // A nested-list accumulator can corrupt repeated rows in 1.4.4.
+                // Scalar fields retain the last match and its accepted positions.
+                state="(list_reduce(list_transform(" & hits & ",lambda i: struct_pack(last := i,positions := CAST(i AS VARCHAR))),lambda acc,v: CASE WHEN v.last>=acc.last+len(p) THEN struct_pack(last := v.last,positions := acc.positions||','||v.positions) ELSE acc END,struct_pack(last := -CAST(len(p) AS BIGINT),positions := ''::VARCHAR))).positions",
+                nonoverlap="list_transform(list_filter(string_split(" & state & ",','),lambda x: x<>''),lambda x: CAST(x AS BIGINT))",
+                bounds="SELECT *, list_concat([-len(p)]," & nonoverlap & ",[len(t)]) AS bounds FROM (" & inputs & ") AS shape_input",
+                parts="SELECT *, CASE WHEN len(p)=0 THEN [t] ELSE list_transform(range(1,len(bounds)),lambda i: list_slice(t,bounds[i]+len(p)+1,bounds[i+1])) END AS parts FROM (" & bounds & ") AS shape_matches",
+                value=if f=Text.Split then "list_transform(parts,lambda x: struct_pack(v := x,e := NULL::VARCHAR))" else "flatten(list_transform(range(1,len(parts)+1),lambda i: CASE WHEN i=1 THEN parts[i] ELSE list_concat(replacement,parts[i]) END))",
+                guarded="CASE WHEN " & signature & " IS NOT NULL OR t IS NULL THEN NULL ELSE " & value & " END"
+            in N("(SELECT " & guarded & " FROM (" & parts & ") AS shape_parts)",if f=Text.Split then type list else type nullable text,if f=Text.Split then "text-list" else "utf16",signature)
+        else if f=Text.Combine then
+            let xs=ListArg(args{0},c,r),encoding=Record.FieldOrDefault(xs,"Encoding",null),
+                listValue=if encoding="text-list" then r(xs) else "NULL::STRUCT(v BIGINT[],e VARCHAR)[]",
+                signature=Co({Sig(xs,"list",false,false),Sig(b,"text",true,true)}),
+                inputs="SELECT " & listValue & " AS xs, coalesce(" & Units(b,r) & ",[]::BIGINT[]) AS sep",
+                filtered="SELECT *,list_filter(xs,lambda x: x.v IS NOT NULL) AS kept, (list_first(list_filter(xs,lambda x: x.e IS NOT NULL))).e AS item_error FROM (" & inputs & ") AS shape_input",
+                err=Co({signature,"item_error"}),
+                value="CASE WHEN " & err & " IS NOT NULL THEN NULL ELSE flatten(list_transform(range(1,len(kept)+1),lambda i: CASE WHEN i=1 THEN kept[i].v ELSE list_concat(sep,kept[i].v) END)) END"
+            in if encoding<>"text-list" and Type.Is(Record.FieldOrDefault(xs,"Type",type any),type list) then error "This list needs a typed SQL element representation."
+                else N("(SELECT " & value & " FROM (" & filtered & ") AS shape_combine)",type text,"utf16","(SELECT " & err & " FROM (" & filtered & ") AS shape_combine_error)")
+        else error "No text-shaping scalar mapping."
+        in scalar,
+    Element=(ast,c,r)=>let xs=c(ast[Collection]),index=Arg(ast[Key],c),n=if IsNumber(index) then "CAST(" & r(index) & " AS DOUBLE)" else "NULL::DOUBLE",optional=Record.FieldOrDefault(ast,"IsOptional",false),
+        inputs="SELECT " & r(xs) & " AS xs," & n & " AS n",
+        bounds=(which,condition)=>"CASE WHEN " & condition & " THEN CAST(to_json(struct_pack(k := 'shape-index',m := '',d := CAST(to_json(xs) AS VARCHAR),i := " & Tag(index,r) & ",which := " & S(which) & ")) AS VARCHAR) ELSE NULL END",
+        err=Co({E(xs),E(index),TypedError(index,"number",false,false,r),IntError(index,"n",r),bounds("negative","n<0"),if optional then "NULL" else bounds("missing","n>=len(xs)"),"(list_extract(xs,TRY_CAST(n AS BIGINT)+1)).e"}),
+        value="CASE WHEN " & err & " IS NOT NULL THEN NULL ELSE (list_extract(xs,TRY_CAST(n AS BIGINT)+1)).v END"
+        in if Record.FieldOrDefault(xs,"Encoding",null)<>"text-list" then error "List element access requires the represented text-list kind."
+           else N("(SELECT " & value & " FROM (" & inputs & ") AS shape_element)",type nullable text,"utf16","(SELECT " & err & " FROM (" & inputs & ") AS shape_element_error)"),
+    DecodeUnits=(units)=>Json.Document("""" & Text.Combine(List.Transform(units,(n)=>"\u" & Binary.ToText(Binary.FromList({Number.IntegerDivide(n,256),Number.Mod(n,256)}),BinaryEncoding.Hex))) & """"),
+    DecodeList=(xs,restore)=>List.Transform(xs,(x)=>if x[e]<>null then error restore(x[e]) else if x[v]=null then null else DecodeUnits(x[v])),
+    RestoreValue=(tag,restore)=>let t=tag[t],v=tag[v] in if t="null" then null else if t="text" or t="json" then Json.Document(v)
+        else if t="number" or t="double" then if List.Contains({"nan"},Text.Lower(v)) then #nan else if List.Contains({"inf","infinity","∞"},Text.Lower(v)) then #infinity else if List.Contains({"-inf","-infinity","-∞"},Text.Lower(v)) then -#infinity else if t="double" then Double.From(v,"en-US") else Decimal.From(v,"en-US")
+        else if t="logical" then Logical.FromText(v) else if t="binary" then Binary.FromText(v,BinaryEncoding.Hex) else if t="time" then Time.FromText(v,[Culture="en-US"])
+        else if List.Contains({"date","datetime","datetimezone"},t) then dateScalar[Decode](v,t)
+        else if t="text-list" then DecodeList(Json.Document(v),restore) else if t="static-list" then List.Transform(v,each @RestoreValue(_,restore))
+        else if t="record" then Record.TransformFields(v,List.Transform(Record.FieldNames(v),(k)=>{k,each @RestoreValue(_,restore)})) else error "Unknown M error-detail representation.",
+    RestoreError=(payload,restore)=>if payload[k]="shape-index" then
+        let xs=DecodeList(Json.Document(payload[d]),restore),i=RestoreValue(Json.Document(payload[i]),restore),negative=payload[which]="negative",template=if negative then (try {"x"}{-1})[Error] else (try {"x"}{1})[Error]
+        in template & [Detail=if negative then [Value=xs,Index=i] else xs]
+        else let value=RestoreValue(Json.Document(payload[d]),restore),target=payload[target],
+            checked=try (if target="text" then ((x as text)=>x)(value) else if target="text?" then ((x as nullable text)=>x)(value) else if target="number" then ((x as number)=>x)(value) else ((x as list)=>x)(value))
+            in if checked[HasError] then checked[Error] else error "The backend supplied an invalid type-error marker."
+in [Functions=Functions,Compile=Compile,MakeList=MakeList,Element=Element,Units=Units,DecodeList=DecodeList,RestoreError=RestoreError,IntError=IntError,TypedError=TypedError,Tag=Tag]

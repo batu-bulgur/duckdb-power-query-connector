@@ -148,6 +148,15 @@ function Invoke-RegressionSuite {
                     }) | Out-Null
                 }
                 $oracle=if($name -eq 'parity_round_matrix_oracle'){@{maxRows=41595;pattern='round_even\(';patterns=@('round_even\(','HUGEINT')}}
+                    elseif($name -like 'parity_shape_*_oracle'){
+                        $shape=@{
+                            parity_shape_extract_oracle=@(352,4);parity_shape_replace_split_oracle=@(1920,6)
+                            parity_shape_combine_oracle=@(1920,3);parity_shape_types_oracle=@(352,9)
+                            parity_shape_consumers_oracle=@(1920,3);parity_shape_precision_oracle=@(5,2)
+                        }[$name]
+                        if(-not $shape){throw "Undeclared text-shaping differential case: $name"}
+                        @{maxRows=$shape[0];pattern='shape_';patterns=@('shape_',('"__pq_column_'+$shape[1]+'"'),'struct_pack')}
+                    }
                     elseif($name -eq 'parity_date_native_values_oracle'){@{maxRows=6;pattern='date_value';patterns=@('date_value','struct_pack')}}
                     elseif($name -eq 'parity_date_precision_oracle'){@{maxRows=5;pattern='date_value';patterns=@('date_value','HUGEINT','integer_parts','rtrim')}}
                     elseif($name -like 'parity_date_*_oracle'){@{maxRows=2244;pattern='date_value';patterns=@('date_value','struct_pack','safe_target')}}

@@ -26,8 +26,12 @@ explain language behavior; do not translate away that coverage.
    work. Begin from a committed dependency only when necessary and document it.
 2. Implement one coherent behavior with correct-result regression tests, SQL
    folding and ODBC transfer assertions where applicable. Use synthetic data.
-3. Run focused tests while iterating; run `./tools/dev.ps1 verify` against the
-   final source/artifact before delivery. Do not regenerate expected outputs.
+3. Run focused tests while iterating; run `./tools/Verify-Change.ps1 -BaseRef
+   origin/main -Connector <artifact>` before delivery. Connector, test, fixture,
+   runner and toolchain changes require full runtime verification. Documentation
+   and classified release/validation tooling run version/publisher guards,
+   package/source integrity and SDK loading without unchanged M/folding suites.
+   Unknown changes require full validation. Do not regenerate expected outputs.
 4. Review the diff and `git diff --check`; explicitly stage only task-owned
    files. Commit and push to origin under the standing authorization in AGENTS.md.
    A connected GitHub tool may publish the exact reviewed tree if CLI credentials
@@ -55,6 +59,14 @@ Force pushes and deletions are disabled. Required human approvals are zero for
 this solo-maintained fork; this does not waive code review or CI. Auto-merge is
 enabled repository-wide and selected separately on each ready PR. Feature PRs
 use squash merge. No workflow automatically accepts arbitrary contributors' PRs.
+
+Both jobs remain required for every PR/main head. `smoke-test` uses the scope
+selected from the actual Git diff and project resource allowlist. Metadata-only
+changes do not install ODBC or seed million-row fixtures; their current build is
+still source/hash checked and loaded by the pinned SDK. Runtime/test/toolchain or
+unknown changes retain the full strict suite. Manual workflow dispatch always
+forces full verification. Scope tests cover mixed, renamed/deleted, packaged,
+unknown and empty changes; metadata work is not represented by a skipped check.
 
 Automatically delete head branches is enabled for merged PRs. This removes remote
 PR branches; it does not remove local branches or worktrees. Before local cleanup,

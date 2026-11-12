@@ -20,6 +20,7 @@ not permission to alter endpoint policies or install a machine-wide driver.
 ./tools/dev.ps1 test-parity   # Pure M references, then matching scalar folding cases
 ./tools/dev.ps1 verify        # Build, runner, functional, M-reference, folding, negatives
 ./tools/dev.ps1 verify -Parallel # Same complete suite in six isolated test processes
+./tools/Verify-Change.ps1 -BaseRef origin/main -Connector ./bin/AnyCPU/Debug/DuckDB.mez # Required scope for this change
 ```
 
 Commands exit nonzero on failure. `test` and `test-folding` build from current
@@ -29,6 +30,14 @@ source by default. To verify an already-built artifact or isolate a regression:
 ./tools/dev.ps1 test-folding -Connector ./bin/AnyCPU/Debug/DuckDB.mez -Case skip_take
 ./tools/dev.ps1 test-parity -Case 'parity_round*'
 ```
+
+Use `Verify-Change.ps1` for delivery. Its allowlist selects focused metadata checks
+for docs and release/validation tooling, while any packaged resource, project,
+VERSION, M test/baseline, fixture, runner, SDK/ODBC or unknown change selects the
+full suite. Package contents must match the current checkout and load with SDK
+`info` in either scope. `-ForceFull` and manual CI dispatch request the complete
+suite explicitly. This avoids replaying unchanged M calculations for release-note
+edits without dropping either required GitHub check.
 
 The SDK is installed under `.agent/tools/sdk/2.155.2`, pinned to upstream CI's
 version in `tools/toolchain.json`. The download is about 129 MiB. The NuGet package's
@@ -198,8 +207,10 @@ Do not infer that it loads in Excel. Excel's built-in ODBC route is a separate
 integration target whose folding must be measured in that host. Neither Excel
 nor Power BI GUI integration is established by PQTest alone.
 
-CI uses the same `verify` command against the artifact from upstream's MSBuild
-job. Its isolated hosted runner retains upstream's pinned ODBC 1.4.4.0 installation;
-this is not an installation procedure for corporate machines. CI records synthetic
+CI validates the artifact from upstream's MSBuild job. Full scope runs the same
+`verify -Parallel` command and installs the pinned ODBC 1.4.4.0 driver. Metadata
+scope runs package/source integrity and SDK loading after version/publisher guards;
+it does not install ODBC or run the unchanged M suites. Hosted runner setup is
+separate from installation procedures for corporate machines. CI records synthetic
 test evidence as an artifact. Local results must be distinguished from an actual
 GitHub Actions run; changing the workflow alone does not verify hosted CI.

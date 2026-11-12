@@ -39,11 +39,13 @@ presented as published personal releases.
 
 ## Validation and publication
 
-Run `./tools/Test-Version.ps1 -BaseRef origin/main`, then the normal final
-`./tools/dev.ps1 verify`. CI runs version policy regression tests, checks the
+Run `./tools/Test-Version.ps1 -BaseRef origin/main`, then the scoped final
+`./tools/Verify-Change.ps1 -BaseRef origin/main -Connector <artifact>`. CI runs version policy regression tests, checks the
 transition against the actual PR base/main-push parent, and compares the built
 MEZ's allowlisted resources with source. The same tests and row budgets apply to
 versioned artifacts; release preparation never regenerates test baselines.
+Notes/publisher-only changes use focused guards and package/SDK checks; packaged
+resource, M-test, fixture, runner or toolchain changes require the complete suite.
 
 `Publish fork release` runs after successful **main push** `Build connector`
 runs, only in the named personal fork. It checks the triggering event, branch,

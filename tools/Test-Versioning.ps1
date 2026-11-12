@@ -33,6 +33,36 @@ Assert-ReleaseNotesChanges '0.3.0' '0.4.0' @('docs/release-notes/0.4.0.md','READ
 Must-Reject 'rewriting current published notes without a bump' { Assert-ReleaseNotesChanges '0.3.0' '0.3.0' @('docs/release-notes/0.3.0.md') }
 Must-Reject 'rewriting older notes during a new release' { Assert-ReleaseNotesChanges '0.3.0' '0.4.0' @('docs/release-notes/0.3.0.md') }
 
+# Exercise correction authorization against real Git blobs, including CRLF files.
+$correctionRoot = Join-Path (Split-Path $PSScriptRoot) ('.agent/versioning-tests/correction-' + [guid]::NewGuid().ToString('N'))
+$notePath = 'docs/release-notes/0.3.0.md'
+[void](New-Item -ItemType Directory -Path (Join-Path $correctionRoot 'docs/release-notes') -Force)
+$null = & git -C $correctionRoot init --quiet
+if ($LASTEXITCODE -ne 0) { throw 'Cannot initialize correction fixture.' }
+'*.md text eol=lf' | Set-Content (Join-Path $correctionRoot '.gitattributes')
+'Original published notes' | Set-Content (Join-Path $correctionRoot $notePath)
+$null = & git -C $correctionRoot add -- .gitattributes $notePath
+$fixtureTree = & git -C $correctionRoot write-tree
+if ($LASTEXITCODE -ne 0) { throw 'Cannot write correction fixture tree.' }
+$oldBlob = & git -C $correctionRoot rev-parse ('{0}:{1}' -f $fixtureTree,$notePath)
+Assert-ReleaseNotesChanges '0.3.0' '0.3.0' @() $correctionRoot $fixtureTree
+[IO.File]::WriteAllText((Join-Path $correctionRoot $notePath),"English correction`r`n")
+$newBlob = & git -C $correctionRoot hash-object -- $notePath
+Must-Reject 'historical correction without a ledger' { Assert-ReleaseNotesChanges '0.3.0' '0.3.0' @($notePath) $correctionRoot $fixtureTree }
+$correction = @{path=$notePath;fromBlob=$oldBlob;toBlob=$newBlob;reason='Synthetic language correction'}
+$ledgerPath = Join-Path $correctionRoot 'docs/release-note-corrections.json'
+ConvertTo-Json -InputObject @($correction) | Set-Content $ledgerPath
+Assert-ReleaseNotesChanges '0.3.0' '0.3.0' @($notePath) $correctionRoot $fixtureTree
+foreach ($field in @('path','fromBlob','toBlob','reason')) {
+    $invalid = $correction.Clone()
+    $invalid[$field] = if ($field -eq 'reason') { '' } else { 'wrong' }
+    ConvertTo-Json -InputObject @($invalid) | Set-Content $ledgerPath
+    Must-Reject "correction with incorrect $field" { Assert-ReleaseNotesChanges '0.3.0' '0.3.0' @($notePath) $correctionRoot $fixtureTree }
+}
+ConvertTo-Json -InputObject @($correction) | Set-Content $ledgerPath
+'Unexpected later rewrite' | Set-Content (Join-Path $correctionRoot $notePath)
+Must-Reject 'later edit reusing a translation authorization' { Assert-ReleaseNotesChanges '0.3.0' '0.3.0' @($notePath) $correctionRoot $fixtureTree }
+
 $run = Join-Path (Split-Path $PSScriptRoot) ('.agent/versioning-tests/' + [guid]::NewGuid().ToString('N'))
 $source = Join-Path $run 'source'
 [void](New-Item -ItemType Directory -Path $source -Force)
@@ -51,7 +81,7 @@ Must-Reject 'extra packaged resource' { Assert-PackageSources $run $package }
 $noteDirectory = Join-Path $run 'docs/release-notes'
 [void](New-Item -ItemType Directory -Path $noteDirectory -Force)
 '0.3.0' | Set-Content (Join-Path $run 'VERSION')
-"<!-- release-type: minor -->`n## Eklenenler`nSynthetic`n## Query folding`nSynthetic`n## Sınırlar`nSynthetic`n## Doğrulama`nSynthetic" | Set-Content (Join-Path $noteDirectory '0.3.0.md')
+"<!-- release-type: minor -->`n## Added`nSynthetic`n## Query folding`nSynthetic`n## Known limitations`nSynthetic`n## Validation`nSynthetic" | Set-Content (Join-Path $noteDirectory '0.3.0.md')
 $null = Get-ReleaseState $run
 '[Version = "0.2.0"]' | Set-Content (Join-Path $run 'DuckDB.pq')
 Must-Reject 'version/connector metadata mismatch' { Get-ReleaseState $run }

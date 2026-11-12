@@ -88,6 +88,9 @@ jobs:
           $asset = "duckdb_odbc-windows-amd64.zip"
           $zip = Join-Path .agent\ci-odbc $asset
           Invoke-WebRequest "https://github.com/duckdb/duckdb-odbc/releases/download/v$($toolchain.ciOdbcVersion)/$asset" -OutFile $zip
+          if ((Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant() -cne $toolchain.ciOdbcSha256) {
+            throw 'DuckDB ODBC download differs from the pinned official asset digest.'
+          }
           tar -xf $zip -C .agent\ci-odbc
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $dir = (Resolve-Path .agent\ci-odbc).Path

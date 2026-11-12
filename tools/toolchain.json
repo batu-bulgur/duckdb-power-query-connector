@@ -1,5 +1,6 @@
 {
   "sdkVersion": "2.155.2",
   "sdkSha256": "9a924edaf369bc7fa8f4ce9477c19236e6af2989ef4149920cd263511651f4ff",
-  "ciOdbcVersion": "1.4.4.0"
+  "ciOdbcVersion": "2.0.0.1",
+  "ciOdbcSha256": "0319071a1d1f5eab93ae01a69d9aa7d39c772ebcf3ff4e856fc5ad654460e63e"
 }

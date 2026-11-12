@@ -7,6 +7,11 @@ Personal-fork builds, checksums and per-version feature/folding notes are on the
 See the [changelog](CHANGELOG.md) and [measured parity scope](docs/scalar-parity.md)
 before assuming that a particular overload or host is supported.
 
+The personal fork's primary tested runtime is DuckDB **2.0.0**, delivered by
+Windows AMD64 ODBC **2.0.0.1**. CI uses that exact driver with a pinned download
+digest. See the [runtime contract](docs/duckdb-2-runtime.md) for version identity,
+complete validation and the separate host-integration boundary.
+
 1. [Installing](#installing)
 2. [How to use with Power BI](#how-to-use-with-power-bi)
 3. [Turning on UTF-8 support in the Language & Region settings](#turning-on-utf-8-support-in-the-language--region-settings)
@@ -14,7 +19,7 @@ before assuming that a particular overload or host is supported.
 
 ## Installing
 
-1. Download the latest [DuckDB ODBC driver for Windows (x86_64/AMD64)](https://github.com/duckdb/duckdb-odbc/releases/latest/download/duckdb_odbc-windows-amd64.zip).
+1. Download the tested [DuckDB ODBC 2.0.0.1 driver for Windows (x86_64/AMD64)](https://github.com/duckdb/duckdb-odbc/releases/download/v2.0.0.1/duckdb_odbc-windows-amd64.zip).
    See [the releases page](https://github.com/duckdb/duckdb-odbc/releases) for other versions and architectures.
    For more information about the Windows ODBC Driver, see the [DuckDB Docs page on DuckDB ODBC API on Windows](https://duckdb.org/docs/stable/clients/odbc/windows).
 2. Extract the `.zip` archive. Run `odbc_install.exe` - if Windows displays a security warning, click "More information" then "Run Anyway".

@@ -19,6 +19,8 @@ jobs:
   build:
     runs-on: windows-2025
     timeout-minutes: 10
+    outputs:
+      validation-scope: ${{ steps.validation.outputs.scope }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -32,6 +34,17 @@ jobs:
           ./tools/Test-Versioning.ps1
           $baseRef = if ($env:VERSION_BASE) { $env:VERSION_BASE } else { 'HEAD^' }
           ./tools/Test-Version.ps1 -BaseRef $baseRef
+
+      - name: Select required validation
+        id: validation
+        shell: pwsh
+        env:
+          VERSION_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          FORCE_FULL: ${{ github.event_name == 'workflow_dispatch' }}
+        run: |
+          ./tools/Test-ValidationScope.ps1
+          $baseRef = if ($env:VERSION_BASE) { $env:VERSION_BASE } else { 'HEAD^' }
+          ./tools/Verify-Change.ps1 -BaseRef $baseRef -ScopeOnly -GitHubOutput -ForceFull:($env:FORCE_FULL -eq 'true')
 
       - uses: microsoft/setup-msbuild@v2
 
@@ -49,8 +62,8 @@ jobs:
           path: duckdb-power-query-connector.mez
           if-no-files-found: error
 
-  # The same headless commands used locally validate results, SQL folding, and
-  # ODBC row counts. PQTest's JSON status is checked even if its process exits 0.
+  # Always check this head's package. Runtime scope additionally validates
+  # results, SQL folding and ODBC rows; metadata scope does not replay M suites.
   smoke-test:
     needs: build
     runs-on: windows-2025
@@ -63,6 +76,7 @@ jobs:
           name: duckdb-power-query-connector
 
       - name: Install DuckDB ODBC driver
+        if: needs.build.outputs.validation-scope == 'full'
         shell: pwsh
         run: |
           # Register the "DuckDB Driver" that DuckDB.pq references straight into the registry.
@@ -91,13 +105,17 @@ jobs:
           ./tools/dev.ps1 bootstrap
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Functional and folding regression tests
+      - name: Run required package or runtime validation
         shell: pwsh
         run: |
           # Seed through the same ODBC engine instead of downloading a separate CLI.
           # Test source files stay untouched; substituted queries live under .agent.
           ./tools/Test-Version.ps1 -Connector ./duckdb-power-query-connector.mez
-          ./tools/dev.ps1 verify -Parallel -Connector ./duckdb-power-query-connector.mez
+          if ('${{ needs.build.outputs.validation-scope }}' -eq 'metadata') {
+            ./tools/Test-ConnectorPackage.ps1 -Connector ./duckdb-power-query-connector.mez
+          } else {
+            ./tools/dev.ps1 verify -Parallel -Connector ./duckdb-power-query-connector.mez
+          }
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Preserve synthetic test evidence
@@ -114,5 +132,6 @@ jobs:
             .agent/native-boundaries/**/*.json
             .agent/verification/**/*.log
             .agent/verification/**/summary.json
+            .agent/package-checks/**/summary.json
           if-no-files-found: ignore
           include-hidden-files: true

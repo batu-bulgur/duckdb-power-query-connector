@@ -67,8 +67,13 @@ research/review requests do not authorize implementation or delivery.
   metadata for packaged changes, add the matching release notes and CHANGELOG
   entry, and validate the transition against origin/main. Use patch for fixes,
   minor for new compatible features/folding, and major for contract breaks.
-- Run relevant focused tests during development and `./tools/dev.ps1 verify`
-  on the final source/artifact before delivery. Inspect actual result, SQL and
+- Run relevant focused tests during development and `./tools/Verify-Change.ps1
+  -BaseRef origin/main -Connector <artifact>` on the final source/artifact before
+  delivery. It requires the full `dev.ps1 verify -Parallel` suite for connector,
+  test, fixture, runner, SDK/ODBC or unknown changes. Documentation and explicitly
+  classified release/validation tooling use focused version/publisher tests,
+  exact package/source checks and SDK loading. Do not repeat the unchanged M
+  suites for those changes. Inspect actual result, SQL and
   ODBC-row evidence. Never bless baselines or weaken tests to get green CI.
 - Review the diff, run `git diff --check`, and stage only this task's changes.
   Commit with a meaningful message, push only to origin, and open/update a PR

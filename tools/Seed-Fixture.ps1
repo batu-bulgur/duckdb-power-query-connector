@@ -90,6 +90,24 @@ SELECT row_number() OVER ()::INTEGER AS id,label,offset_value,count_value
 FROM (SELECT label FROM parity_text UNION ALL SELECT label FROM parity_utf16_edges) AS t
 CROSS JOIN (SELECT unnest([-1,0,1,2,3,4,5,99,1.5,NULL,-2147483648,-2147483649,2147483647,2147483648]::DOUBLE[]) AS offset_value) AS o
 CROSS JOIN (SELECT unnest([-1,0,1,2,5,NULL,1.5,-2147483648,-2147483649,2147483647,2147483648]::DOUBLE[]) AS count_value) AS c;
+CREATE TABLE gui_date_base(id INTEGER,d DATE);
+CREATE TABLE gui_date_numeric(id INTEGER,n DECIMAL(38,28),integer_value UBIGINT);
+INSERT INTO gui_date_numeric VALUES (1,0.9999999999999999999999999999,18446744073709551615),
+ (2,1.0000000000000000000000000001,18446744073709551615),(3,-0.0000000000000000000000000001,18446744073709551615),
+ (4,1,18446744073709551615),(5,NULL,18446744073709551615);
+INSERT INTO gui_date_base VALUES (1,DATE '0001-01-01'),(2,DATE '0001-01-31'),(3,DATE '1582-10-04'),
+ (4,DATE '1600-02-29'),(5,DATE '1700-02-28'),(6,DATE '1900-02-28'),(7,DATE '2000-02-29'),
+ (8,DATE '2023-01-31'),(9,DATE '2024-01-31'),(10,DATE '2024-02-29'),(11,DATE '9999-12-31'),(12,NULL);
+CREATE TABLE gui_date_matrix AS
+SELECT row_number() OVER ()::INTEGER AS id,b.id AS base_id,d,
+ CAST(d AS TIMESTAMP)+INTERVAL '12 hours 34 minutes 56.123456 seconds' AS dt,
+ CASE WHEN d BETWEEN DATE '1678-01-01' AND DATE '2261-12-31' THEN CAST(d AS TIMESTAMP_NS)+INTERVAL '12 hours 34 minutes 56.123456 seconds' ELSE NULL END::TIMESTAMP_NS AS dt_ns,
+ CASE WHEN d BETWEEN DATE '1900-01-01' AND DATE '2100-01-01' THEN CAST(CAST(d AS TIMESTAMP)+INTERVAL '12 hours 34 minutes 56.123456 seconds' AS TIMESTAMPTZ) ELSE NULL END AS dz,
+ delta,first_day,'not a date'::VARCHAR AS label,TRUE AS flag,TIME '12:34:56.123456' AS clock,from_hex('0001ff') AS payload
+FROM gui_date_base b
+CROSS JOIN (SELECT unnest([NULL,-2147483649,-2147483648,-365,-31,-1,0,1,2,31,365,1.5,1.0000000000000002,2147483647,2147483648,'NaN'::DOUBLE,'Infinity'::DOUBLE]::DOUBLE[]) AS delta) n
+CROSS JOIN (SELECT unnest([NULL,0,1,2,3,4,5,6,-1,7,1.5]::DOUBLE[]) AS first_day) w;
+UPDATE gui_date_matrix SET dt_ns=make_timestamp_ns(epoch_ns(dt_ns)+700) WHERE dt_ns IS NOT NULL;
 '@
     [void]$command.ExecuteNonQuery()
     $ordinalMap=(Get-Content (Join-Path (Split-Path $PSScriptRoot) 'OrdinalIgnoreCase.pqm') | Select-Object -Last 1).Trim().Trim('"')
@@ -112,6 +130,8 @@ CROSS JOIN (SELECT unnest([-1,0,1,2,5,NULL,1.5,-2147483648,-2147483649,214748364
         $command.CommandText = "SELECT count(*) FROM $table"
         if ($command.ExecuteScalar() -ne 1000000) { throw "Fixture count mismatch: $table" }
     }
+    $command.CommandText='SELECT count(*) FROM gui_date_matrix'
+    if($command.ExecuteScalar() -ne 2244){throw 'Date matrix fixture count mismatch.'}
     [pscustomobject]@{ Engine=$version; Rows=1000000; Database=$DatabasePath }
 } finally {
     if ($command) { $command.Dispose() }

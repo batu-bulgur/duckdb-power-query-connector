@@ -1,0 +1,1 @@
+let s=DuckDB.Contents("__DB_PATH__",null,true,false,"single",[custom_user_agent="date-zone-chain"]),t=s{[Item="smoke"]}[Data],a=Table.AddColumn(t,"v",each Date.EndOfMonth(Date.AddDays(#datetimezone(2024,1,30,12,34,56.1234567,5,45),[n])),type datetimezone) in Table.SelectColumns(Table.SelectRows(a,each [v]=#datetimezone(2024,1,31,18,14,59.9999999,0,0)),{"n"})

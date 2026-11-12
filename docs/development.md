@@ -84,6 +84,11 @@ passes only when all of the following hold:
    optional `forbiddenPatterns` (for example ODBC `{ fn ... }` escapes).
 5. The driver-reported row count is within the case's transfer budget.
 
+Date cases requiring physical timestamp classification declare one extra small
+`duckdb_columns()` request. Catalog success/identifiers/SQL/rows are checked
+separately; the calculation retains one data query and its own transfer budget.
+Undeclared metadata or retries fail. See [date parity](date-parity.md).
+
 The extra checks are necessary. On SDK 2.155.2, `compare` can exit zero while its
 JSON says `Failed`; it can also report success for a partially local expression
 with `--failOnFoldingFailure`. Thus the flag alone does not establish folding.

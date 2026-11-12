@@ -1385,5 +1385,253 @@
       "(?i)WITH RECURSIVE",
       "(?i)LIMIT 3"
     ]
+  },
+  {
+    "name": "parity_date_year",
+    "maxRows": 12,
+    "sqlPatterns": [
+      "date_value",
+      "struct_pack",
+      "year\\(d\\)"
+    ],
+    "forbiddenPatterns": [
+      "\\{\\s*fn\\b"
+    ]
+  },
+  {
+    "name": "parity_date_month",
+    "maxRows": 12,
+    "sqlPatterns": [
+      "date_value",
+      "struct_pack",
+      "month\\(d\\)"
+    ],
+    "forbiddenPatterns": [
+      "\\{\\s*fn\\b"
+    ]
+  },
+  {
+    "name": "parity_date_day",
+    "maxRows": 12,
+    "sqlPatterns": [
+      "date_value",
+      "struct_pack",
+      "day\\(d\\)"
+    ],
+    "forbiddenPatterns": [
+      "\\{\\s*fn\\b"
+    ]
+  },
+  {
+    "name": "parity_date_weekday",
+    "maxRows": 12,
+    "sqlPatterns": [
+      "date_value",
+      "struct_pack",
+      "date_part\\('dow'"
+    ],
+    "forbiddenPatterns": [
+      "\\{\\s*fn\\b"
+    ]
+  },
+  {
+    "name": "parity_date_add_days",
+    "maxRows": 11,
+    "sqlPatterns": [
+      "date_value",
+      "struct_pack",
+      "safe_target"
+    ],
+    "forbiddenPatterns": [
+      "\\{\\s*fn\\b"
+    ]
+  },
+  {
+    "name": "parity_date_add_months",
+    "maxRows": 11,
+    "sqlPatterns": [
+      "date_value",
+      "struct_pack",
+      "make_date"
+    ],
+    "forbiddenPatterns": [
+      "\\{\\s*fn\\b"
+    ]
+  },
+  {
+    "name": "parity_date_start_month",
+    "maxRows": 12,
+    "sqlPatterns": [
+      "date_value",
+      "struct_pack",
+      "date_trunc\\('month'"
+    ],
+    "forbiddenPatterns": [
+      "\\{\\s*fn\\b"
+    ]
+  },
+  {
+    "name": "parity_date_end_month",
+    "maxRows": 12,
+    "sqlPatterns": [
+      "date_value",
+      "struct_pack",
+      "last_day"
+    ],
+    "forbiddenPatterns": [
+      "\\{\\s*fn\\b"
+    ]
+  },
+  {
+    "name": "parity_date_datetime_tick",
+    "maxRows": 1,
+    "sqlPatterns": [
+      "date_value",
+      "last_day",
+      "9999999",
+      "WHERE"
+    ],
+    "forbiddenPatterns": [
+      "\\{\\s*fn\\b"
+    ],
+    "metadataMaxRows": 16
+  },
+  {
+    "name": "parity_date_datetime_wrong_tick",
+    "maxRows": 0,
+    "sqlPatterns": [
+      "date_value",
+      "9999998",
+      "WHERE"
+    ],
+    "forbiddenPatterns": [
+      "\\{\\s*fn\\b"
+    ],
+    "metadataMaxRows": 16
+  },
+  {
+    "name": "parity_date_datetime_equals",
+    "maxRows": 1,
+    "sqlPatterns": [
+      "date_value",
+      "last_day",
+      "9999999",
+      "WHERE"
+    ],
+    "forbiddenPatterns": [
+      "\\{\\s*fn\\b"
+    ],
+    "metadataMaxRows": 16
+  },
+  {
+    "name": "parity_date_million",
+    "maxRows": 3,
+    "sqlPatterns": [
+      "year\\(d\\)",
+      "month\\(d\\)",
+      "day\\(d\\)",
+      "WHERE",
+      "LIMIT 3"
+    ],
+    "forbiddenPatterns": [
+      "\\{\\s*fn\\b"
+    ]
+  },
+  {
+    "name": "parity_date_zone_end",
+    "maxRows": 10,
+    "sqlPatterns": [
+      "date_value",
+      "last_day",
+      "9999999",
+      "05:45"
+    ],
+    "forbiddenPatterns": [
+      "\\{\\s*fn\\b"
+    ]
+  },
+  {
+    "name": "parity_date_zone_instant_equality",
+    "maxRows": 2,
+    "sqlPatterns": [
+      "date_value",
+      "temporal_key",
+      "INTERVAL",
+      "WHERE"
+    ],
+    "forbiddenPatterns": [
+      "\\{\\s*fn\\b"
+    ]
+  },
+  {
+    "name": "parity_date_zone_value_equals",
+    "maxRows": 2,
+    "sqlPatterns": [
+      "date_value",
+      "temporal_key",
+      "WHERE"
+    ],
+    "forbiddenPatterns": [
+      "\\{\\s*fn\\b"
+    ]
+  },
+  {
+    "name": "parity_date_conditional",
+    "maxRows": 2,
+    "sqlPatterns": [
+      "CASE WHEN",
+      "date_value",
+      "last_day",
+      "WHERE"
+    ],
+    "forbiddenPatterns": [
+      "\\{\\s*fn\\b"
+    ]
+  },
+  {
+    "name": "parity_date_index",
+    "maxRows": 2,
+    "sqlPatterns": [
+      "WITH RECURSIVE",
+      "ROW_NUMBER",
+      "date_value"
+    ],
+    "forbiddenPatterns": [
+      "\\{\\s*fn\\b"
+    ]
+  },
+  {
+    "name": "parity_date_group",
+    "maxRows": 1,
+    "sqlPatterns": [
+      "GROUP BY",
+      "COUNT\\(\\*\\)",
+      "date_value"
+    ],
+    "forbiddenPatterns": [
+      "\\{\\s*fn\\b"
+    ]
+  },
+  {
+    "name": "parity_date_distinct",
+    "maxRows": 1,
+    "sqlPatterns": [
+      "PARTITION BY",
+      "date_value"
+    ],
+    "forbiddenPatterns": [
+      "\\{\\s*fn\\b"
+    ]
+  },
+  {
+    "name": "parity_date_transform",
+    "maxRows": 1,
+    "sqlPatterns": [
+      "date_value",
+      "last_day"
+    ],
+    "forbiddenPatterns": [
+      "\\{\\s*fn\\b"
+    ]
   }
 ]

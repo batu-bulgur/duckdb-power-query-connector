@@ -129,6 +129,10 @@ SQL/ODBC evidence and reproduced SDK boundaries; it does not claim complete
 M-language coverage. Run `./tools/dev.ps1 test-parity` for the paired reference
 and connector subset, or `verify` for all checks.
 
+The [next GUI date group](docs/date-parity.md) maps eight extraction, day/month
+arithmetic and month-boundary functions, retaining M kinds, errors and 100 ns
+endpoints. Native TIMESTAMPTZ host context remains an explicit measured boundary.
+
 CI builds the `.mez` on every PR and push to `main` (see `.github/workflows/build.yaml`).
 The build just runs `msbuild DuckDB.proj` on a `windows-2025` runner — the project's
 `BuildMez` target zips the connector sources into `duckdb-power-query-connector.mez`,

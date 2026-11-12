@@ -135,7 +135,8 @@ function Invoke-RegressionSuite {
             if ($Folding) {
                 $contract = @($contracts | Where-Object name -eq $name)
                 if ($contract.Count -ne 1) { throw "Missing/duplicate folding contract for $name" }
-                $evidence = Assert-FoldingEvidence -Result $result[0] -Contract $contract[0]
+                $dataResult=if($contract[0].PSObject.Properties.Name -contains 'metadataMaxRows'){Get-CatalogSeparatedEvidence -Result $result[0] -MetadataRows $contract[0].metadataMaxRows}else{$result[0]}
+                $evidence = Assert-FoldingEvidence -Result $dataResult -Contract $contract[0]
                 $summary.Add($evidence)
                 Write-Host "PASS $name (ODBC rows: $($evidence.Rows))"
             } else {
@@ -147,6 +148,9 @@ function Invoke-RegressionSuite {
                     }) | Out-Null
                 }
                 $oracle=if($name -eq 'parity_round_matrix_oracle'){@{maxRows=41595;pattern='round_even\(';patterns=@('round_even\(','HUGEINT')}}
+                    elseif($name -eq 'parity_date_native_values_oracle'){@{maxRows=6;pattern='date_value';patterns=@('date_value','struct_pack')}}
+                    elseif($name -eq 'parity_date_precision_oracle'){@{maxRows=5;pattern='date_value';patterns=@('date_value','HUGEINT','integer_parts','rtrim')}}
+                    elseif($name -like 'parity_date_*_oracle'){@{maxRows=2244;pattern='date_value';patterns=@('date_value','struct_pack','safe_target')}}
                     elseif($name -like 'parity_filter_error_*_oracle'){@{maxRows=3;pattern='__duckdb_pq_error_';patterns=@('__duckdb_pq_error_','list_slice','coalesce')}}
                     elseif($name -like 'parity_index_*_oracle'){@{maxRows=10;pattern='WITH RECURSIVE';patterns=@('WITH RECURSIVE','pq_index_values')}}
                     elseif($name -eq 'parity_slice_matrix_oracle'){@{maxRows=3020;pattern='list_slice';patterns=@('list_slice','struct_pack')}}
@@ -156,11 +160,26 @@ function Invoke-RegressionSuite {
                 if ($oracle) {
                     $events=@($result[0].DiagnosticEvents.Odbc)
                     $starts=@($events | Where-Object EventName -eq QueryStart)
-                    if($starts.Count -ne 2){throw 'Differential oracle requires exactly one folded query and one buffered M oracle read.'}
+                    $metadata=@($starts|Where-Object {$_.Properties.Command -match 'FROM duckdb_columns\(\)'})
+                    $expectedMetadata=if($name -in 'parity_date_dt_oracle','parity_date_dt_ns_oracle'){1}else{0}
+                    if($starts.Count -ne (2+$expectedMetadata) -or $metadata.Count -ne $expectedMetadata){throw 'Differential oracle requires one folded query, one buffered M read, and only its declared catalog query.'}
+                    $metadataRows=0
+                    foreach($meta in $metadata){
+                        $metaEvents=@($events|Where-Object {$_.Properties.Identifier -eq $meta.Properties.Identifier})
+                        Assert-FoldingEvidence -Result ([pscustomobject]@{DiagnosticEvents=[pscustomobject]@{Odbc=$metaEvents}}) -Contract ([pscustomobject]@{name=$name;maxRows=16;sqlPatterns=@('SELECT column_name,data_type FROM duckdb_columns\(')})|Out-Null
+                        $metadataRows+=@($metaEvents|Where-Object EventName -eq QueryFinish)[0].Properties.RowCount
+                    }
                     $folded=@($starts|Where-Object {$_.Properties.Command -match $oracle.pattern})
                     if($folded.Count -ne 1){throw 'Differential oracle did not run exactly one target SQL query.'}
                     $identifier=$folded[0].Properties.Identifier
                     $slice=[pscustomobject]@{DiagnosticEvents=[pscustomobject]@{Odbc=@($events|Where-Object {$_.Properties.Identifier -eq $identifier})}}
+                    if($metadataRows){
+                        # The SDK reports cumulative rows within this activity.
+                        # Validate catalog transfer separately, then the data delta.
+                        $slice.DiagnosticEvents.Odbc=@($slice.DiagnosticEvents.Odbc|ForEach-Object {
+                            $e=$_;if($e.EventName -eq 'QueryFinish'){$props=@{};foreach($p in $e.Properties.PSObject.Properties){$props[$p.Name]=$p.Value};$props.RowCount-=$metadataRows;[pscustomobject]@{EventName=$e.EventName;Properties=[pscustomobject]$props}}else{$e}
+                        })
+                    }
                     Assert-FoldingEvidence -Result $slice -Contract ([pscustomobject]@{name=$name;maxRows=$oracle.maxRows;sqlPatterns=$oracle.patterns}) | Out-Null
                 }
                 $summary.Add([pscustomobject]@{Query=$name;Status='Passed'})

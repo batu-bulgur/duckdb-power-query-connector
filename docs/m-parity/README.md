@@ -2,7 +2,9 @@
 
 This is the initial research snapshot, dated **2026-11-12**. Later implementation
 and measured boundaries are tracked in [scalar-parity.md](../scalar-parity.md)
-and [first14-status.csv](first14-status.csv). Research-only status and zero-parity
+and [first14-status.csv](first14-status.csv). The next GUI date group is tracked in
+[date-parity.md](../date-parity.md) and [gui-date-status.csv](gui-date-status.csv).
+Research-only status and zero-parity
 counts below describe this snapshot, not the later implementation.
 
 The published Microsoft Learn reference yielded **660 named functions and 7

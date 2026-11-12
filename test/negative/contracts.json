@@ -20,5 +20,13 @@
     "sqlPatterns": [
       "map_extract_value"
     ]
+  },
+  {
+    "name": "date_native_timezone",
+    "maxRows": 2244,
+    "sqlPatterns": [
+      "date_value",
+      "safe_target"
+    ]
   }
 ]

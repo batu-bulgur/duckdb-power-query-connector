@@ -13,6 +13,7 @@
     <MezContent Include="RelationalFolding.pqm" />
     <MezContent Include="AdvancedScalar.pqm" />
     <MezContent Include="RoundScalar.pqm" />
+    <MezContent Include="DateScalar.pqm" />
     <MezContent Include="EqualityScalar.pqm" />
     <MezContent Include="OrdinalIgnoreCase.pqm" />
     <MezContent Include="IndexSql.pqm" />

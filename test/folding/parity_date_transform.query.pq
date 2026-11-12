@@ -1,0 +1,1 @@
+let s=DuckDB.Contents("__DB_PATH__",null,true,false,"single",[custom_user_agent="date-transform"]),t=s{[Item="gui_date_base"]}[Data] in Table.SelectColumns(Table.TransformColumns(Table.SelectRows(t,each [id]=9),{{"d",Date.EndOfMonth,type date}}),{"id","d"})

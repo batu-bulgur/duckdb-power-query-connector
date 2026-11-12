@@ -1,0 +1,8 @@
+[
+  {
+    "path": "docs/release-notes/0.3.0.md",
+    "fromBlob": "72fe95b3787957b1797b2215aa27a880f14644d3",
+    "toBlob": "815ef8542b087d4f71b0c3e6bb3842561d4128b2",
+    "reason": "User-requested English translation of published notes; release scope, tag, commit and binary assets remain unchanged."
+  }
+]

@@ -22,7 +22,12 @@ packaging validation before adoption. Versions below 1.0 remain experimental.
 - Put `<!-- release-type: patch|minor|major -->` with the chosen single value at
   the top of the new notes. The transition checker enforces that increment/reset.
 - Update CHANGELOG with the new release's features and explicit folding scope.
-  Preserve old note files; corrections belong in a subsequent release.
+  Preserve old note files. Behavior changes belong in a subsequent release;
+  explicitly requested metadata-only corrections may use the reviewed exact
+  before/after Git blob pairs in `docs/release-note-corrections.json`.
+- Release notes must be in English, with `Added`, `Query folding`,
+  `Known limitations` and `Validation` sections. Include `Fixed` when applicable.
+  Test data may retain Turkish/Unicode text when needed for language coverage.
 
 The first tracked fork version is 0.3.0, following the upstream v0.2.0 base. The
 pre-existing connector metadata still said 0.1.7 despite that upstream tag; this
@@ -62,3 +67,13 @@ or conflicting tag fails explicitly and requires diagnosis; it is not a successf
 release. Keep following the release workflow until publication and asset digest
 verification finish. The original upstream manual release workflow is retained
 for compatibility and is not the personal fork's automatic path.
+
+## Published note corrections
+
+A language or factual metadata correction must not change the published tag,
+commit, binary or checksums, or imply that an unreleased feature was included.
+Record the note path, exact original/corrected Git blob IDs and an English reason
+in `docs/release-note-corrections.json`. The transition check accepts only that
+exact content pair; other historical edits still fail. Review the correction in
+a normal PR and update the existing GitHub release description to match. A
+documentation-only correction does not increment VERSION or produce a new binary.

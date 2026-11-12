@@ -15,6 +15,12 @@ must be preserved during the initial migration.
 
 ## Default delivery loop
 
+Write all GitHub-facing development content in English, regardless of the
+language used in chat. This includes commits, PRs, issues, reviews, documentation,
+release notes and ordinary code comments. Turkish/Unicode test inputs, identifiers,
+examples and test-specific commentary are appropriate when they exercise or
+explain language behavior; do not translate away that coverage.
+
 1. Inspect status, worktrees and current origin/main. Create a short-lived
    `codex/<topic>` branch from origin/main, using a separate worktree for parallel
    work. Begin from a committed dependency only when necessary and document it.
@@ -49,6 +55,13 @@ Force pushes and deletions are disabled. Required human approvals are zero for
 this solo-maintained fork; this does not waive code review or CI. Auto-merge is
 enabled repository-wide and selected separately on each ready PR. Feature PRs
 use squash merge. No workflow automatically accepts arbitrary contributors' PRs.
+
+Automatically delete head branches is enabled for merged PRs. This removes remote
+PR branches; it does not remove local branches or worktrees. Before local cleanup,
+check chat ownership, dirty/untracked files and squash-merge preservation. Keep
+active chats' branches and checkouts. Archive unused managed worktrees through
+Codex so their non-ignored work remains recoverable; preserve needed ignored
+files separately before archiving.
 
 Build connector runs on PRs to main, main pushes and manual dispatch. A feature
 branch push without a PR does not trigger it. Windows jobs build with the

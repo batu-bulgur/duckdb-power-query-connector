@@ -17,7 +17,7 @@ if ($BaseRef) {
     $resources = @($project.Project.ItemGroup.MezContent | ForEach-Object { [string]$_.Include })
     $runtimeChanged = @($changed | Where-Object { $_ -in $resources }).Count -gt 0
     Assert-VersionTransition -Previous $previous -Current $state.Version -Kind $state.Kind -RuntimeChanged $runtimeChanged
-    Assert-ReleaseNotesChanges -Previous $previous -Current $state.Version -Paths $changed
+    Assert-ReleaseNotesChanges -Previous $previous -Current $state.Version -Paths $changed -Root $root -BaseRef $baseSha
 }
 if ($Connector) { Assert-PackageSources -Root $root -Connector $Connector }
 Write-Host "PASS version $($state.Version), metadata, notes and requested package/transition checks."

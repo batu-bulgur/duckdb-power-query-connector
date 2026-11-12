@@ -41,6 +41,12 @@ Use 64-bit PowerShell 7.2 or newer on Windows:
 
 ## Autonomous feature delivery
 
+All GitHub-facing development content must be in English: documentation,
+commit messages, PR/issue titles and descriptions, reviews, release notes,
+and ordinary code comments. The conversation language does not change this
+policy. Preserve Turkish/Unicode fixture data, identifiers, examples and
+test-specific commentary when they exercise or explain language behavior.
+
 The user has authorized the complete delivery loop for explicitly requested
 implementation work in this repository. Do not ask again to commit, push, open
 a PR, or enable auto-merge for that work in the personal fork. Read-only

@@ -36,7 +36,7 @@ function Get-ReleaseState {
     $text = Get-Content -LiteralPath $notes -Raw
     if ($text -notmatch '<!-- release-type: (patch|minor|major) -->') { throw 'Release notes require a release-type marker.' }
     $kind = $Matches[1]
-    foreach ($heading in @('Eklenenler','Query folding','Sınırlar','Doğrulama')) {
+    foreach ($heading in @('Added','Query folding','Known limitations','Validation')) {
         if ($text -notmatch "(?m)^## $heading\s*$") { throw "Release notes are missing section: $heading" }
     }
     [pscustomobject]@{Version=$version;Kind=$kind;Notes=$notes;Tag="fork-v$version"}
@@ -72,11 +72,30 @@ function Assert-ReleaseRun {
 }
 
 function Assert-ReleaseNotesChanges {
-    param([string]$Previous,[string]$Current,[string[]]$Paths)
+    param([string]$Previous,[string]$Current,[string[]]$Paths,[string]$Root,[string]$BaseRef)
     foreach ($path in $Paths) {
         if ($path -like 'docs/release-notes/*.md' -and
             ($Current -eq $Previous -or $path -ne "docs/release-notes/$Current.md")) {
-            throw "Previous release notes are immutable; record the correction in a new release: $path"
+            if ($Root -and $BaseRef -and (Test-ReleaseNoteCorrection -Root $Root -BaseRef $BaseRef -Path $path)) { continue }
+            throw "Previous release notes require an exact reviewed metadata correction or a new release: $path"
         }
     }
+}
+
+function Test-ReleaseNoteCorrection {
+    param([string]$Root,[string]$BaseRef,[string]$Path)
+    $ledger = Join-Path $Root 'docs/release-note-corrections.json'
+    if (-not (Test-Path -LiteralPath $ledger)) { return $false }
+    $entries = @(Get-Content -LiteralPath $ledger -Raw | ConvertFrom-Json)
+    $previousBlob = & git -C $Root rev-parse --verify ('{0}:{1}' -f $BaseRef,$Path) 2>$null
+    if ($LASTEXITCODE -ne 0) { return $false }
+    if (-not (Test-Path -LiteralPath (Join-Path $Root $Path) -PathType Leaf)) { return $false }
+    # Use Git's path filters so CRLF checkouts and LF runners compare the same blob.
+    $currentBlob = & git -C $Root hash-object -- $Path
+    if ($LASTEXITCODE -ne 0) { throw 'Cannot hash corrected release notes.' }
+    $matches = @($entries | Where-Object {
+        $_.path -ceq $Path -and $_.fromBlob -ceq $previousBlob -and
+        $_.toBlob -ceq $currentBlob -and -not [string]::IsNullOrWhiteSpace($_.reason)
+    })
+    return $matches.Count -eq 1
 }

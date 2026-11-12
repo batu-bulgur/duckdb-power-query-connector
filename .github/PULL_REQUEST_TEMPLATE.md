@@ -1,5 +1,8 @@
 ## Problem and resulting behavior
 
+Write the PR and other GitHub-facing development content in English. Preserve
+intentional Turkish/Unicode test data and language-specific coverage.
+
 Describe the trigger, previous result and corrected behavior. State the supported
 scope and any dependency on another PR.
 

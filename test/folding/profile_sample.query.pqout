@@ -1,0 +1,1 @@
+#table(type table [Column=text, Min=any, Max=any, Count=number], {{"amount",0,1248.75,1000},{"category","even","odd",1000},{"event_date",#date(2026,1,1),#date(2026,1,30),1000},{"id",0,999,1000},{"label","item-0","item-999",1000}})

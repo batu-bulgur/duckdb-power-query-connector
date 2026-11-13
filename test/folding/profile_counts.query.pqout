@@ -1,0 +1,1 @@
+#table(type table [count=number, distinct=number, nan=number, even=number, odd=number, emptyText=number, nullText=number], {{4,4,2,0,1,0,1}})

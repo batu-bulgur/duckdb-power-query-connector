@@ -58,11 +58,11 @@ let
                 selected=List.Transform(names,(n)=>let found=List.Select(members,each _[MemberName]=n) in if not List.IsEmpty(found) then found{0} else if mode=MissingField.Ignore then null else if mode=MissingField.UseNull then [Kind="Constant",Value=null] else error "The selected record field is absent.")
             in List.RemoveNulls(selected)
         else error "Record.FieldValues needs a represented row or static field projection.",
-    Compile = (a, rowType, encodings, aliases) =>
+    Compile = (a, rowType, encodings, aliases, optional profilePredicate as nullable logical) =>
         let k=a[Kind] in
         if k="Constant" then if InvalidUtf16(a[Value]) then Node(LiteralUnits(a[Value])) & [Type=type text,Encoding="utf16",Transport=true,ErrorSql="NULL"] else Node(L(a[Value])) & [Type=Value.Type(a[Value])] & (if a[Value] is number then [NumericKindSql=ConstantNumberKind(a[Value])] else if dateScalar[Kind](Value.Type(a[Value]))<>null then [TemporalLiteral=dateScalar[Literal](a[Value])] else [])
-        else if k="List" then textShape[MakeList](a[Members],each @Compile(_,rowType,encodings,aliases),Render,false)
-        else if k="ElementAccess" then textShape[Element](a,each @Compile(_,rowType,encodings,aliases),Render)
+        else if k="List" then textShape[MakeList](a[Members],each @Compile(_,rowType,encodings,aliases,profilePredicate),Render,false)
+        else if k="ElementAccess" then textShape[Element](a,each @Compile(_,rowType,encodings,aliases,profilePredicate),Render)
         else if k="FieldAccess" then
             if Record.HasFields(encodings,a[MemberName]) then
                 let physical=Record.FieldOrDefault(aliases,a[MemberName],a[MemberName]),raw="(q." & Q(physical) & ").v",encoding=Record.Field(encodings,a[MemberName])
@@ -73,12 +73,12 @@ let
                    else if nativeType="TIME" then Node("CAST(substr(CAST(" & column & " AS VARCHAR),1,8) AS TIME)") & [Type=typ,Transport=true,ErrorSql="NULL"]
                    else [Kind="Column",Name=Record.FieldOrDefault(aliases,a[MemberName],a[MemberName]),Type=typ,NumericKindSql=if nativeType="UBIGINT" then "'decimal'" else if List.Contains({24,53},precision) or scale=null then "'double'" else "'decimal'"]
         else if k="Binary" and a[Operator]="Concatenate" then
-            let left=@Compile(a[Left],rowType,encodings,aliases),right=@Compile(a[Right],rowType,encodings,aliases),
+            let left=@Compile(a[Left],rowType,encodings,aliases,profilePredicate),right=@Compile(a[Right],rowType,encodings,aliases,profilePredicate),
                 l=textShape[Units](left,Render),r=textShape[Units](right,Render)
             in if not (Type.Is(Record.FieldOrDefault(left,"Type",type any),type nullable text) and Type.Is(Record.FieldOrDefault(right,"Type",type any),type nullable text)) then error "A text concatenation requires text operands."
                else Node("CASE WHEN " & l & " IS NULL OR " & r & " IS NULL THEN NULL ELSE list_concat(" & l & "," & r & ") END") & [Type=type nullable text,Encoding="utf16",Transport=true,ErrorSql="coalesce(" & Record.FieldOrDefault(left,"ErrorSql","NULL") & "," & Record.FieldOrDefault(right,"ErrorSql","NULL") & ")"]
         else if k="Binary" then
-            let left=@Compile(a[Left],rowType,encodings,aliases),right=@Compile(a[Right],rowType,encodings,aliases),
+            let left=@Compile(a[Left],rowType,encodings,aliases,profilePredicate),right=@Compile(a[Right],rowType,encodings,aliases,profilePredicate),
                 op=Record.Field([Add="+",Subtract="-",Multiply="*",Divide="/",Equals="IS NOT DISTINCT FROM",NotEquals="IS DISTINCT FROM",LessThan="<",GreaterThan=">",LessThanOrEquals="<=",GreaterThanOrEquals=">=",And="AND",Or="OR"],a[Operator]),
                 numeric=Type.Is(Record.FieldOrDefault(left,"Type",type any),type nullable number) and Type.Is(Record.FieldOrDefault(right,"Type",type any),type nullable number),
                 textual=Type.Is(Record.FieldOrDefault(left,"Type",type any),type nullable text) and Type.Is(Record.FieldOrDefault(right,"Type",type any),type nullable text),
@@ -102,14 +102,14 @@ let
                 branchError=if a[Operator]="And" then "CASE WHEN " & l & "=FALSE THEN NULL ELSE " & rightError & " END" else if a[Operator]="Or" then "CASE WHEN " & l & "=TRUE THEN NULL ELSE " & rightError & " END" else rightError
             in Node(sql) & [Type=if arithmetic then type nullable number else type nullable logical,NumericKindSql=if arithmetic then "'double'" else "NULL",Transport=Record.FieldOrDefault(left,"Transport",false) or Record.FieldOrDefault(right,"Transport",false),ErrorSql="coalesce(" & Record.FieldOrDefault(left,"ErrorSql","NULL") & "," & branchError & ")"]
         else if k="Unary" then
-            let inner=@Compile(a[Expression],rowType,encodings,aliases),encoded=Record.FieldOrDefault(inner,"Encoding",null)="number",raw=Record.FieldOrDefault(inner,"RawValueSql",Render(inner)),
+            let inner=@Compile(a[Expression],rowType,encodings,aliases,profilePredicate),encoded=Record.FieldOrDefault(inner,"Encoding",null)="number",raw=Record.FieldOrDefault(inner,"RawValueSql",Render(inner)),
                 kind=Record.FieldOrDefault(inner,"NumericKindSql","'double'"),
                 negative="CASE WHEN " & kind & "='decimal' THEN CASE WHEN starts_with(" & raw & ",'-') THEN substr(" & raw & ",2) ELSE '-'||" & raw & " END ELSE CAST(-CAST(" & raw & " AS DOUBLE) AS VARCHAR) END"
             in (if a[Operator]="Not" then Node("(NOT " & Render(inner) & ")") & [Type=type nullable logical]
                 else if encoded then Node(negative) & [Type=type nullable number,Encoding="number",RawValueSql=negative,NumericKindSql=kind]
                 else Node("(-" & Render(inner) & ")") & [Type=type nullable number,NumericKindSql=kind]) & [Transport=Record.FieldOrDefault(inner,"Transport",false),ErrorSql=Record.FieldOrDefault(inner,"ErrorSql","NULL")]
         else if k="If" then
-            let condition=@Compile(a[Condition],rowType,encodings,aliases),yes=@Compile(a[TrueCase],rowType,encodings,aliases),no=@Compile(a[FalseCase],rowType,encodings,aliases),
+            let condition=@Compile(a[Condition],rowType,encodings,aliases,profilePredicate),yes=@Compile(a[TrueCase],rowType,encodings,aliases,profilePredicate),no=@Compile(a[FalseCase],rowType,encodings,aliases,profilePredicate),
                 c=Render(condition),yt=Record.FieldOrDefault(yes,"Type",type any),nt=Record.FieldOrDefault(no,"Type",type any),
                 number=Type.Is(yt,type nullable number) and Type.Is(nt,type nullable number),text=Type.Is(yt,type nullable text) and Type.Is(nt,type nullable text),logical=Type.Is(yt,type nullable logical) and Type.Is(nt,type nullable logical),
                 temporalKind=if dateScalar[Kind](yt)=null then dateScalar[Kind](nt) else dateScalar[Kind](yt),
@@ -121,7 +121,7 @@ let
                 else if not (number or text or logical or temporal) then error "The conditional branches need a common SQL value representation."
                 else Node(value) & [Type=if number then type nullable number else if text then type nullable text else if temporal then Record.Field([date=type nullable date,datetime=type nullable datetime,datetimezone=type nullable datetimezone],temporalKind) else type nullable logical,Encoding=if number then "number" else if text then "utf16" else if temporal then temporalKind else "logical",RawValueSql=value,NumericKindSql="CASE WHEN " & c & " THEN " & Record.FieldOrDefault(yes,"NumericKindSql","'double'") & " ELSE " & Record.FieldOrDefault(no,"NumericKindSql","'double'") & " END",ErrorSql=err,Transport=true]
         else if k="Invocation" then
-            let f=a[Function][Value], visitor=(e)=>@Compile(e,rowType,encodings,aliases),
+            let f=a[Function][Value], visitor=(e)=>@Compile(e,rowType,encodings,aliases,profilePredicate),
                 encoded=List.AnyTrue(List.Transform(a[Arguments],each if _[Kind]="Constant" then false else Record.FieldOrDefault(visitor(_),"Transport",false))),
                 texts={Text.EndsWith,Text.Length,Text.Middle,Text.Range,Text.PositionOf,Text.PadStart,Text.PadEnd,Text.Trim,Text.TrimStart,Text.TrimEnd}
             in
@@ -149,6 +149,13 @@ let
                 let xs=visitor(a[Arguments]{0}),item=(if f=List.First then "list_first" else "list_last") & "(" & Render(xs) & ")"
                 in Node("(" & item & ").v") & [Type=type nullable text,Encoding="utf16",Transport=true,ErrorSql="coalesce(" & Record.FieldOrDefault(xs,"ErrorSql","NULL") & ",(" & item & ").e)"]
             else if f=Table.RowCount then Node("COUNT(*)")
+            else if profilePredicate=true and List.Contains({Number.IsNaN,Number.IsEven,Number.IsOdd},f) then
+                let column=visitor(a[Arguments]{0}),value="CAST(" & Render(column) & " AS DOUBLE)",
+                    sql=if f=Number.IsNaN then "isnan(" & value & ")"
+                        else "(isfinite(" & value & ") AND (floor(" & value & ") % 2) " & (if f=Number.IsEven then "=0" else "<>0") & ")"
+                in if List.Count(a[Arguments])<>1 or not Type.Is(Type.NonNullable(column[Type]),type number)
+                    then error "Numeric classification requires a numeric column."
+                    else Node(sql) & [Type=type nullable logical]
             else error "Unsupported M invocation in relational expression."
         else error "Unsupported M expression in relational plan.",
     Expression = (fn)=>let direct=try RowExpression.From(fn),
@@ -178,6 +185,92 @@ let
         else if a[Kind]="List" then true
         else if a[Kind]="ElementAccess" then @HasAdvanced(a[Collection]) or @HasAdvanced(a[Key])
         else false,
+    // Profile counts are group aggregates, separate from scalar text-list Count.
+    // Only native, unencoded columns enter this path; unsupported additional
+    // profile expressions keep M's existing local evaluation.
+    ProfileCount = (a,s) =>
+        if a[Kind]<>"Invocation" or a[Function][Value]<>List.Count or List.Count(a[Arguments])<>1 then false
+        else let arg=a[Arguments]{0},
+            input=if arg[Kind]="Invocation" and List.Contains({List.Select,List.Distinct},arg[Function][Value]) then arg[Arguments]{0} else arg
+        in input[Kind]="FieldAccess" and not Record.HasFields(s[Encodings],input[MemberName]),
+    ProfileAggregate = (a,s) =>
+        let
+            args=a[Arguments],f=a[Function][Value],rowType=RowType(s),
+            Native=(input)=>
+                let column=Compile(input,rowType,s[Encodings],s[Aliases]),typ=Type.NonNullable(column[Type]),
+                    native=Record.FieldOrDefault(Type.Facets(Record.Field(Type.RecordFields(rowType),input[MemberName])[Type]),"NativeTypeName",null),
+                    kind=dateScalar[Kind](typ),
+                    // Apply the existing timestamp calibration before aggregate
+                    // equality/ordering, including TIMESTAMP_NS conversion.
+                    value=if kind="datetime" then "CAST(" & dateScalar[Format](column,Render) & " AS TIMESTAMP)" else Render(column)
+                in if input[Kind]<>"FieldAccess" or Record.HasFields(s[Encodings],input[MemberName]) or native=null or kind="datetimezone" or List.Contains({"DECIMAL","NUMERIC"},native)
+                    then error "Profile aggregation requires a represented native column."
+                    else [Value=value,Type=typ,Native=native],
+            ReplaceItem=(v,input)=>
+                if v=ItemExpression.Item then input
+                else if v is record then Record.TransformFields(v,List.Transform(Record.FieldNames(v),(n)=>{n,(child)=>@ReplaceItem(child,input)}))
+                else if v is list then List.Transform(v,each @ReplaceItem(_,input)) else v,
+            NotNull=(p)=>p[Kind]="Binary" and p[Operator]="NotEquals" and
+                ((p[Left]=ItemExpression.Item and p[Right]=[Kind="Constant",Value=null]) or (p[Right]=ItemExpression.Item and p[Left]=[Kind="Constant",Value=null])),
+            SafePredicate=(p,optional nonNull as nullable logical)=>
+                if p=ItemExpression.Item then true
+                else if p[Kind]="Constant" then p[Value]=null or p[Value] is number or p[Value] is text or p[Value] is logical
+                else if p[Kind]="Binary" then List.Contains({"Equals","NotEquals","And","Or"},p[Operator]) and @SafePredicate(p[Left],nonNull) and @SafePredicate(p[Right],nonNull=true or (p[Operator]="And" and NotNull(p[Left])))
+                else if p[Kind]="Invocation" then nonNull=true and List.Contains({Number.IsNaN,Number.IsEven,Number.IsOdd},p[Function][Value]) and List.Count(p[Arguments])=1 and p[Arguments]{0}=ItemExpression.Item
+                else false,
+            Count=()=>
+                let arg=args{0},
+                    selected=arg[Kind]="Invocation" and arg[Function][Value]=List.Select,
+                    distinct=arg[Kind]="Invocation" and arg[Function][Value]=List.Distinct,
+                    input=if selected or distinct then arg[Arguments]{0} else arg,
+                    column=Native(input),value=column[Value],
+                    numeric=Type.Is(column[Type],type number),
+                    predicate=if selected then ItemExpression.From(arg[Arguments]{1}[Value]) else null,
+                    compiled=if selected then Compile(ReplaceItem(predicate,input),rowType,s[Encodings],s[Aliases],true) else null,
+                    numberValue="CAST(" & value & " AS DOUBLE)",
+                    unique=if numeric then "COUNT(DISTINCT " & numberValue & ") FILTER (WHERE NOT isnan(" & numberValue & ")) + COUNT(*) FILTER (WHERE isnan(" & numberValue & "))"
+                        else "COUNT(DISTINCT " & value & ")",
+                    sql=if selected then "COUNT(*) FILTER (WHERE " & Render(compiled) & ")"
+                        else if distinct then "(" & unique & " + CASE WHEN COUNT(*)>COUNT(" & value & ") THEN 1 ELSE 0 END)"
+                        else "COUNT(*)"
+                in if List.Count(args)<>1 or (distinct and List.Count(arg[Arguments])<>1)
+                        or (selected and (List.Count(arg[Arguments])<>2 or not SafePredicate(predicate) or not Type.Is(Record.FieldOrDefault(compiled,"Type",type any),type nullable logical)))
+                    then error "This profile count overload or predicate is not represented."
+                    else Node(sql),
+            Statistic=()=>
+                let column=Native(args{0}),value=column[Value],typ=column[Type],
+                    numeric=Type.Is(typ,type number),textual=Type.Is(typ,type text),
+                    floating=numeric and List.Contains({"DOUBLE","FLOAT","REAL"},column[Native]),
+                    numberValue="CAST(" & value & " AS DOUBLE)",
+                    extreme=(name)=>name & "(" & value & "," & numberValue & " ORDER BY q." & Q(s[Order]) & ")",
+                    numericAggregate=(name)=>"CASE WHEN COUNT(*) FILTER (WHERE NOT isfinite(" & numberValue & "))>0 THEN " & name & "(" & numberValue & ") ELSE F" & name & "(" & numberValue & ") END",
+                    aggregate=(name)=>name & "(" & value & ")",
+                    // M averages temporal values in 100 ns ticks and truncates
+                    // the quotient. AVG(TIMESTAMP) loses the seventh digit.
+                    ticks="(SUM(CAST(date_diff('microsecond',TIMESTAMP '0001-01-01'," & value & ") AS HUGEINT)*10)//COUNT(" & value & "))",
+                    meanDate="(DATE '0001-01-01'+CAST(" & ticks & "//864000000000 AS INTEGER))",
+                    meanTimestamp="strftime(" & meanDate & ",'%Y-%m-%d')||printf('T%02d:%02d:%02d.%07d',CAST(" & ticks & "//36000000000%24 AS BIGINT),CAST(" & ticks & "//600000000%60 AS BIGINT),CAST(" & ticks & "//10000000%60 AS BIGINT),CAST(" & ticks & "%10000000 AS BIGINT))",
+                    sql=if f=List.StandardDeviation then
+                            if not numeric then error "Standard deviation requires a numeric column."
+                            else "CASE WHEN COUNT(*) FILTER (WHERE NOT isfinite(" & numberValue & "))>0 THEN 'NaN'::DOUBLE WHEN COUNT(" & value & ")=1 THEN 0 ELSE STDDEV_SAMP(" & numberValue & ") FILTER (WHERE isfinite(" & numberValue & ")) END"
+                        else if f=List.Sum then if numeric then numericAggregate("SUM") else error "Profile sum requires numbers."
+                        else if f=List.Average then
+                            if Type.Is(typ,type date) then meanDate
+                            else if Type.Is(typ,type datetime) then meanTimestamp
+                            else if numeric then numericAggregate("AVG") else error "This profile average kind is not represented."
+                        else if textual then (if f=List.Min then "arg_min" else "arg_max") & "(" & value & "," & UnitsSql(value) & ")"
+                        else if floating then
+                            if f=List.Min then "CASE WHEN COUNT(*) FILTER (WHERE isnan(" & value & "))>0 THEN 'NaN'::DOUBLE ELSE " & extreme("arg_min") & " END"
+                            else "CASE WHEN COUNT(" & value & ")>0 AND COUNT(*) FILTER (WHERE NOT isnan(" & value & "))=0 THEN 'NaN'::DOUBLE ELSE " & extreme("arg_max") & " FILTER (WHERE NOT isnan(" & value & ")) END"
+                        else if numeric then extreme(if f=List.Min then "arg_min" else "arg_max")
+                        else aggregate(if f=List.Min then "MIN" else "MAX")
+                in if List.Count(args)<>1 then error "Optional profile statistic arguments are not represented."
+                   else Node(sql) & (if f=List.Average and Type.Is(typ,type datetime) then [Encoding="datetime",Type=type nullable datetime] else [])
+        in if a[Kind]<>"Invocation" then error "A profile aggregate requires a supported invocation."
+           else if f=List.Count then Count()
+           else if List.Contains({List.Min,List.Max,List.Average,List.Sum,List.StandardDeviation},f) then Statistic()
+           else if f=Table.RowCount and List.Count(args)=1 and args{0}=RowExpression.Row then Node("COUNT(*)")
+           else error "This additional profile aggregate is not represented.",
     NativeError=(fn)=>(try fn())[Error],
     ErrorTemplates=List.Buffer({NativeError(()=>Text.Middle("x",-1)),NativeError(()=>Text.Range("x",2)),NativeError(()=>Text.Range("x",0,2)),
         NativeError(()=>Text.Middle("x",1.5)),NativeError(()=>Text.Middle("x",null)),NativeError(()=>Text.PositionOf(null,"x")),
@@ -279,12 +372,16 @@ let
             let triples=List.Transform(aggregates,each {_[Name],_[Function],_[Type]}),
                 typ=Value.Type(Table.Group(#table(s[Type],{}),keys,triples)),
                 fresh=List.FirstN(List.Select(List.Transform({0..List.Count(Names(s))+List.Count(aggregates)},each "__pq_column_" & Text.From(_)),each not List.Contains(PhysicalNames(s) & {s[Order]},_,Comparer.OrdinalIgnoreCase)),List.Count(aggregates)),
-                values=List.Transform(List.Positions(aggregates),(i)=>Render(Expr(aggregates{i}[Function],s)) & " AS " & Q(fresh{i})),
+                asts=List.Transform(aggregates,each Expression(_[Function])),
+                profile=List.AnyTrue(List.Transform(asts,each ProfileCount(_,s))),
+                nodes=if profile then List.Transform(asts,each ProfileAggregate(_,s)) else List.Transform(aggregates,each Expr(_[Function],s)),
+                encodings=Record.SelectFields(s[Encodings],keys,MissingField.Ignore) & Record.FromList(List.Transform(List.Select(nodes,each profile and Record.HasFields(_,"Encoding")),each _[Encoding]),List.Transform(List.Select(List.Positions(nodes),each profile and Record.HasFields(nodes{_},"Encoding")),each aggregates{_}[Name])),
+                values=List.Transform(List.Positions(aggregates),(i)=>(if profile and Record.HasFields(nodes{i},"Encoding") then "struct_pack(v := " & Render(nodes{i}) & ", e := NULL::VARCHAR)" else Render(nodes{i})) & " AS " & Q(fresh{i})),
                 sql="SELECT " & Text.Combine(List.Transform(keys,each "first(" & Q(Physical(s,_)) & " ORDER BY " & Q(s[Order]) & ") AS " & Q(Physical(s,_))) & values & {"MIN(" & Q(s[Order]) & ") AS " & Q(s[Order])},", ") &
                     ", first(" & Q(s[RowError]) & " ORDER BY " & Q(s[Order]) & ") FILTER (WHERE " & Q(s[RowError]) & " IS NOT NULL) AS " & Q(s[RowError]) &
                     " FROM (" & s[Sql] & ") AS q" & (if List.IsEmpty(keys) then " HAVING COUNT(*)>0" else " GROUP BY " & Text.Combine(List.Transform(keys,each KeySql(s,_)) & NaNKey(s,keys),", ")),
                 ordered="SELECT " & Columns(List.Transform(keys,each Physical(s,_)) & fresh & {s[RowError]}) & ", ROW_NUMBER() OVER (ORDER BY " & Q(s[RowError]) & " IS NULL, " & Q(s[Order]) & ") AS " & Q(s[Order]) & " FROM (" & sql & ") AS grouped"
-            in if Text.Length(ordered)<0 then error "Invalid group plan." else @View(ClearIndex(s) & [Native=Table.Group(s[Native],keys,triples),Type=typ,Sql=ordered,Encodings=Record.SelectFields(s[Encodings],keys,MissingField.Ignore),Aliases=Record.FromList(List.Transform(keys,each Physical(s,_)) & fresh,keys & List.Transform(aggregates,each _[Name])),ValueTypes=Record.SelectFields(s[ValueTypes],keys,MissingField.Ignore) & Record.FromList(List.Transform(aggregates,each _[Type]),List.Transform(aggregates,each _[Name]))]),
+            in if Text.Length(ordered)<0 then error "Invalid group plan." else @View(ClearIndex(s) & [Native=Table.Group(s[Native],keys,triples),Type=typ,Sql=ordered,Own=s[Own] or profile,Encodings=encodings,Aliases=Record.FromList(List.Transform(keys,each Physical(s,_)) & fresh,keys & List.Transform(aggregates,each _[Name])),ValueTypes=Record.SelectFields(s[ValueTypes],keys,MissingField.Ignore) & Record.FromList(List.Transform(aggregates,each _[Type]),List.Transform(aggregates,each _[Name]))]),
         OnDistinct=(columns)=>
             let keys=if List.Contains(columns,null) then Names(s) else columns,
                 duplicate=List.First(List.Select(List.Transform({0..List.Count(Names(s))},each "__pq_duplicate_" & Text.From(_)),each not List.Contains(PhysicalNames(s),_))),

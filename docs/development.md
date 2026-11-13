@@ -89,6 +89,10 @@ Date cases requiring physical timestamp classification declare one extra small
 separately; the calculation retains one data query and its own transfer budget.
 Undeclared metadata or retries fail. See [date parity](date-parity.md).
 
+Native-column profiling groups have their own correct-result, SQL and one-row
+transfer contracts. See [preview profiling](preview-profiling.md) for the host
+trigger, supported aggregate/predicate forms and local-evaluation boundaries.
+
 The extra checks are necessary. On SDK 2.155.2, `compare` can exit zero while its
 JSON says `Failed`; it can also report success for a partially local expression
 with `--failOnFoldingFailure`. Thus the flag alone does not establish folding.

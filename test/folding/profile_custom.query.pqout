@@ -1,0 +1,1 @@
+#table(type table [Column=text, Count=number, ZeroCount=any, NaNCount=any, EvenCount=any, OddCount=any], {{"amount",8,1,0,4,4}})

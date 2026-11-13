@@ -1,0 +1,1 @@
+#table({"fixture","columns","equal"}, {{"parity_ordering",4,true},{"parity_numeric_kinds",7,true},{"profile_edges",6,true},{"profile_temporal",5,true},{"profile_classify",1,true},{"positive_infinity",1,true},{"negative_infinity",1,true},{"only_null",1,true}})

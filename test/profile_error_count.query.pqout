@@ -1,0 +1,1 @@
+#table(type table [Column=text, Count=number, ErrorCount=any], {{"n",4,0}})

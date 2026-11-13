@@ -39,6 +39,31 @@ Use 64-bit PowerShell 7.2 or newer on Windows:
 - Host integration is a final, separate check. SDK success does not prove Excel
   custom-connector support or Power BI Desktop GUI integration.
 
+## Primary checkout and worktrees
+
+The original project directory is reserved for a clean `main` checkout tracking
+`origin/main`. Keep `main` checked out there. Never create or check out a feature
+branch there, detach its HEAD, edit or commit source there, or use it for feature
+builds and experiments. Every implementation, fix and documentation change must
+use a separate linked worktree on a short-lived `codex/<topic>` branch, even when
+only one chat is working. Existing ignored SDK caches and evidence may remain in
+the primary directory; preserve live worktree/junction dependencies.
+
+At the start of work, fetch `origin/main` and fast-forward the clean primary
+`main`. Start the feature worktree from that fetched commit. After each merged
+PR, fetch and fast-forward primary `main` again before reporting delivery complete.
+Serialize primary syncs across active chats. If primary is dirty, on another
+branch, ahead or diverged, stop the sync and report the concrete state; never
+reset, stash, overwrite user work or push local `main` to repair it. Remote work
+may advance after a sync; primary must remain clean on `main` and be refreshed at
+the next work/delivery boundary. Do not claim that opening a folder fetches Git.
+
+Completion includes removing the delivered feature's local worktree and branch
+after merge, required CI/release verification and dependency checks. Preserve
+needed ignored evidence outside that worktree first and use the managed archive
+tool for managed worktrees. Do not retain implemented feature checkouts as a
+default archive. Preserve active worktrees until their owner releases them.
+
 ## Autonomous feature delivery
 
 All GitHub-facing development content must be in English: documentation,
@@ -56,8 +81,8 @@ research/review requests do not authorize implementation or delivery.
   independent change from current `origin/main` on a short-lived `codex/<topic>`
   branch. Local `main` tracks `origin/main`; `upstream/main` remains the upstream
   reference. Never work directly on main.
-- Inspect worktrees and dirty files first. Use an isolated worktree whenever
-  another chat owns the checkout. Never switch, reset, stash, rebase, commit,
+- Inspect worktrees and dirty files first. Always develop in a linked feature
+  worktree. Never switch, reset, stash, rebase, commit,
   clean, or change files in another active chat's checkout. A chat can deliver
   several sequential features, each on a fresh branch after the preceding merge.
 - Keep one independently reviewable behavior per PR. Include its tests and
@@ -89,8 +114,9 @@ research/review requests do not authorize implementation or delivery.
   additional evidence, not a substitute for tests.
 - After squash merge, start the next feature from the updated origin/main.
   Preserve branches/worktrees still used by active chats. Remove an owned
-  finished worktree or branch only after verifying all work is preserved and
-  any required cleanup authorization is present.
+  finished worktree and branch as part of delivery after verifying all work is
+  preserved. The user authorizes this completed-feature cleanup; never remove
+  active checkouts or live dependencies.
 - Report the PR link, merge commit, tests and material remaining limits. If
   authentication, permissions, conflicts or external CI prevent completion,
   explain the concrete blocker; never report an unobserved success.

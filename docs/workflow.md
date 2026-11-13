@@ -8,10 +8,26 @@
 - `upstream/main`: MotherDuck's independent reference; integration into the fork
   happens through a reviewed PR, preserving local improvements.
 
-Local main tracks origin/main. Fetching remote refs does not require changing an
-active checkout. Never switch branches in a directory owned by another chat.
-The original `fix/endswith-folding` checkout and its in-progress parity files
-must be preserved during the initial migration.
+The original project directory is the primary checkout. It stays clean on
+`main`, tracking `origin/main`; it is not a feature checkout, even when only one
+chat is working. All implementation, fix, documentation, build and experiment
+work belongs in a separate linked worktree on `codex/<topic>`. Do not detach
+primary HEAD or check out a topic branch there. Linked worktrees must not claim
+`main`, so it remains available in the primary directory.
+
+Fetch `origin/main` and fast-forward primary `main` before starting work and after
+each PR merge, before the final delivery report. Coordinate primary syncs when
+chats finish together. Only a clean primary on `main` with no local-only commits
+may be fast-forwarded. If the branch, source status or history is unexpected,
+report it and preserve the files; do not reset, stash or overwrite to force sync.
+Remote changes can advance between these boundaries; entering the directory does
+not itself fetch or pull. Primary remains on `main` and may temporarily be behind.
+
+Fetching remote refs does not require changing an active feature checkout.
+Never switch branches in a directory owned by another chat. Preserve ignored
+SDK caches, junction targets and evidence in the primary `.agent` directory;
+linked worktrees can depend on them. Retired source snapshots are recovery
+material, not feature development checkouts.
 
 ## Default delivery loop
 
@@ -21,9 +37,10 @@ release notes and ordinary code comments. Turkish/Unicode test inputs, identifie
 examples and test-specific commentary are appropriate when they exercise or
 explain language behavior; do not translate away that coverage.
 
-1. Inspect status, worktrees and current origin/main. Create a short-lived
-   `codex/<topic>` branch from origin/main, using a separate worktree for parallel
-   work. Begin from a committed dependency only when necessary and document it.
+1. Inspect status and worktrees, fetch origin/main and fast-forward clean primary
+   `main`. Always create a separate linked worktree with a short-lived
+   `codex/<topic>` branch from that origin/main commit. Begin from a committed
+   dependency only when necessary and document it; primary still stays on main.
 2. Implement one coherent behavior with correct-result regression tests, SQL
    folding and ODBC transfer assertions where applicable. Use synthetic data.
 3. Run focused tests while iterating; run `./tools/Verify-Change.ps1 -BaseRef
@@ -43,8 +60,17 @@ explain language behavior; do not translate away that coverage.
    latest PR checks, fix failures within scope, and confirm the resulting merge
    and main push build. A pending run, exit-zero command, or queued auto-merge is
    not completion. Never bypass a failed/missing check or branch protection.
-7. Start the next independent feature from updated origin/main, even when
-   continuing the same chat. Squashed feature branches are not reused for new PRs.
+7. Fetch origin/main and fast-forward the clean primary main after merge. Verify
+   its branch, clean status and equality with the fetched origin/main. Start the
+   next independent feature in a separate worktree from updated origin/main,
+   even when continuing the same chat. Squashed feature branches are not reused
+   for new PRs.
+8. After required CI/release verification, preserve needed ignored evidence in
+   primary `.agent/archives/<topic>` and remove the delivered worktree and local
+   topic branch. Verify squash-merge preservation and live dependencies first.
+   Use the managed archive tool for managed worktrees. Active worktrees stay
+   until their owner releases them; completed features do not remain checked out
+   merely as archives. Recheck the final worktree list and clean primary main.
 
 PR size follows behavior and dependencies, not a fixed line count. Shared
 infrastructure may precede separate text/numeric function families. Each PR
@@ -71,11 +97,13 @@ forces full verification. Scope tests cover mixed, renamed/deleted, packaged,
 unknown and empty changes; metadata work is not represented by a skipped check.
 
 Automatically delete head branches is enabled for merged PRs. This removes remote
-PR branches; it does not remove local branches or worktrees. Before local cleanup,
-check chat ownership, dirty/untracked files and squash-merge preservation. Keep
-active chats' branches and checkouts. Archive unused managed worktrees through
+PR branches; it does not remove local branches or worktrees. Local cleanup is a
+required delivery step under the user's standing authorization. Check ownership,
+dirty/untracked files, squash-merge preservation and live dependencies. Keep
+active chats' branches and checkouts. Archive completed managed worktrees through
 Codex so their non-ignored work remains recoverable; preserve needed ignored
-files separately before archiving.
+files separately before archiving. Do not keep completed worktrees or branches
+in the active tree after their work and verification have finished.
 
 Build connector runs on PRs to main, main pushes and manual dispatch. A feature
 branch push without a PR does not trigger it. Windows jobs build with the

@@ -1851,5 +1851,110 @@
       "positions",
       "list_reduce"
     ]
+  },
+  {
+    "name": "profile_numeric",
+    "maxRows": 1,
+    "sqlPatterns": [
+      "STDDEV_SAMP",
+      "COUNT\\(DISTINCT",
+      "FILTER",
+      "AVG\\("
+    ]
+  },
+  {
+    "name": "profile_sample",
+    "maxRows": 1,
+    "sqlPatterns": [
+      "LIMIT 1000",
+      "arg_min",
+      "arg_max",
+      "COUNT\\(DISTINCT"
+    ]
+  },
+  {
+    "name": "profile_filtered",
+    "maxRows": 1,
+    "sqlPatterns": [
+      "WHERE",
+      "odd",
+      "999990",
+      "COUNT\\(DISTINCT"
+    ]
+  },
+  {
+    "name": "profile_edges",
+    "maxRows": 1,
+    "sqlPatterns": [
+      "STDDEV_SAMP",
+      "arg_min",
+      "arg_max",
+      "isnan",
+      "COUNT\\(DISTINCT"
+    ],
+    "metadataMaxRows": 6
+  },
+  {
+    "name": "profile_custom",
+    "maxRows": 1,
+    "sqlPatterns": [
+      "LIMIT 8",
+      "isfinite",
+      "floor",
+      "FILTER"
+    ]
+  },
+  {
+    "name": "profile_int64",
+    "maxRows": 1,
+    "sqlPatterns": [
+      "arg_max\\(q\\.\"b\"",
+      "COUNT\\(DISTINCT"
+    ]
+  },
+  {
+    "name": "profile_counts",
+    "maxRows": 1,
+    "sqlPatterns": [
+      "COUNT\\(\\*\\)",
+      "COUNT\\(DISTINCT",
+      "isnan",
+      "floor",
+      "FILTER"
+    ]
+  },
+  {
+    "name": "profile_temporal",
+    "maxRows": 1,
+    "metadataMaxRows": 5,
+    "sqlPatterns": [
+      "date_diff",
+      "HUGEINT",
+      "printf",
+      "make_timestamp",
+      "COUNT\\(DISTINCT"
+    ]
+  },
+  {
+    "name": "profile_predicates",
+    "maxRows": 1,
+    "sqlPatterns": [
+      "floor",
+      "isfinite",
+      "isnan",
+      "FILTER"
+    ]
+  },
+  {
+    "name": "profile_numeric_ties",
+    "maxRows": 1,
+    "sqlPatterns": [
+      "arg_min",
+      "arg_max",
+      "ORDER BY",
+      "AS DOUBLE",
+      "floor",
+      "COUNT\\(DISTINCT"
+    ]
   }
 ]

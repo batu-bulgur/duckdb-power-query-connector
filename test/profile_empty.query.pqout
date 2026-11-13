@@ -1,0 +1,1 @@
+#table(type table [Column=text, Min=any, Max=any, Count=number, NullCount=any, DistinctCount=any], {{"amount",null,null,0,0,0}})

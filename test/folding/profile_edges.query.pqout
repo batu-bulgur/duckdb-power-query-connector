@@ -1,0 +1,1 @@
+#table({"minNaN","max","averageNaN","sdNaN","distinct","nulls","textMin","textMax","textDistinct","dateAverage","timestampAverage"}, {{true,1,true,true,4,1,true,true,3,true,true}})
